@@ -13,17 +13,7 @@
     }
 }
 
-/* Garante que o alerta de deadline da sessão (removido) permaneça oculto */
-#deadline-alert {
-    display: none;
-}
-
-/* Estilos para a área do QR Code e URL */
-.qr-code-area {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
+/*  gap: 1rem;
 }
 #audience-url-display { 
     font-family: monospace; 
@@ -42,4 +32,41 @@
 .qr-code-area #qrcode { animation: subtlePulse 4s ease-in-out infinite; }
 @keyframes subtlePulse {
     50% { transform: scale(1.02); }
+}
+
+/* Estilos para a tela de progresso (EAMOS) */
+#progress-screen {
+    width: 100%;
+    padding: 2rem;
+}
+
+#progress-bars-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    width: 100%;
+    max-width: 800px;
+    margin: 2rem auto;
+}
+
+.user-progress-bar {
+    display: grid;
+    grid-template-columns: 150px 1fr 50px;
+    align-items: center;
+    gap: 1rem;
+    font-size: 1.2rem;
+}
+
+.progress-track {
+    background-color: rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    height: 20px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    background-color: var(--primary-color);
+    height: 100%;
+    border-radius: 8px;
+    transition: width 0.5s ease-in-out;
 }

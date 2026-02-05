@@ -1,6 +1,6 @@
 const getBackendUrl = () => {
     const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    return isDevelopment ? 'http://localhost:3000' : 'https://mindpool-backend.onrender.com';
+    return isDevelopment ? 'http://localhost:3000' : 'https://eamos-backend.onrender.com';
 };
 
 const socket = io(getBackendUrl(), {
@@ -12,9 +12,23 @@ const socket = io(getBackendUrl(), {
     reconnectionAttempts: 5
 });
 
+const sessionCode = new URLSearchParams(window.location.search).get('session');
 let currentQuestionId = null;
 let currentTimer = null;
+let totalQuestions = 0;
+
+// Elementos da UI
+const loginScreen = document.getElementById('login-screen');
+const quizScreen = document.getElementById('quiz-screen');
+const nameInput = document.getElementById('audience-name');
+const passwordInput = document.getElementById('audience-password');
+const joinBtn = document.getElementById('join-btn');
+const loginFeedback = document.getElementById('login-feedback');
+const questionTitle = document.getElementById('question-title');
+const optionsContainer = document.getElementById('options-container');
+const answerFeedback = document.getElementById('answer-feedback');
 const audienceTimerEl = document.getElementById('audience-timer');
+
 
 /**
  * Aplica um tema visual ao body, trocando a classe de tema.
@@ -28,102 +42,124 @@ function applyTheme(theme = 'light') {
     body.classList.add(`theme-${theme}`);
 }
 
-function joinAudienceSession() {
-    const sessionCode = new URLSearchParams(window.location.search).get('session');
-    if (sessionCode) {
-        socket.emit('joinAudienceSession', { sessionCode });
-    } else {
-        const questionTitle = document.getElementById('question-title');
-        if (questionTitle) {
-            questionTitle.innerText = "Erro: Código da sessão não encontrado na URL.";
-        }
-    }
+function showScreen(screenName) {
+    loginScreen.style.display = screenName === 'login' ? 'block' : 'none';
+    quizScreen.style.display = screenName === 'quiz' ? 'block' : 'none';
 }
 
-socket.on('newQuestion', (question) => {
+function renderQuestion(question) {
+    if (!question) {
+        questionTitle.innerText = "Parabéns, você concluiu todas as perguntas!";
+        optionsContainer.innerHTML = '';
+        answerFeedback.innerText = '';
+        return;
+    }
+
     // Para e limpa qualquer cronômetro anterior
     if (currentTimer) {
         currentTimer.stop();
         currentTimer = null;
     }
     if (audienceTimerEl) audienceTimerEl.style.display = 'none';
-
-    currentQuestionId = question.id;
-    const questionTitle = document.getElementById('question-title');
-    if (questionTitle) questionTitle.innerText = question.text;
     
-    const optionsContainer = document.getElementById('options-container');
-    // Limpa o container de respostas para a nova pergunta
-    if (!optionsContainer) return;
+    currentQuestionId = question.id;
+    questionTitle.innerText = question.text;
     optionsContainer.innerHTML = '';
+    answerFeedback.innerText = '';
 
     switch (question.questionType) {
         case 'options':
             question.options.forEach(opt => {
                 const button = document.createElement('button');
                 button.textContent = opt.text;
-                button.addEventListener('click', () => submitAnswer(opt.id));
+                button.onclick = () => submitAnswer(opt.id);
                 optionsContainer.appendChild(button);
             });
             break;
         case 'yes_no':
             const yesButton = document.createElement('button');
             yesButton.textContent = 'Sim';
-            yesButton.addEventListener('click', () => submitAnswer('yes'));
+            yesButton.onclick = () => submitAnswer('yes');
             optionsContainer.appendChild(yesButton);
 
             const noButton = document.createElement('button');
             noButton.textContent = 'Não';
-            noButton.addEventListener('click', () => submitAnswer('no'));
+            noButton.onclick = () => submitAnswer('no');
             optionsContainer.appendChild(noButton);
             break;
-        default: // number, integer, short_text, long_text
+        default: // text, number
             const input = document.createElement('input');
             input.id = 'text-answer';
-            if (question.questionType === 'number') {
-                input.type = 'number';
-                input.placeholder = 'Digite um número';
-            } else if (question.questionType === 'integer') {
-                input.type = 'number';
-                input.step = '1';
-                input.placeholder = 'Digite um número inteiro';
-            } else { // short_text or long_text
-                input.type = 'text';
-                const limit = question.charLimit || 280;
-                input.maxLength = limit;
-                input.placeholder = `Sua resposta (max ${limit} caracteres)`;
-            }
+            input.type = (question.questionType === 'number' || question.questionType === 'integer') ? 'number' : 'text';
+            input.placeholder = 'Sua resposta';
+            if (question.charLimit) input.maxLength = question.charLimit;
+
             const submitBtn = document.createElement('button');
             submitBtn.textContent = 'Enviar';
-            submitBtn.addEventListener('click', () => {
+            submitBtn.onclick = () => {
                 if (input.value && input.value.trim()) submitAnswer(input.value);
-            });
+            };
             optionsContainer.append(input, submitBtn);
             break;
     }
-    const feedback = document.getElementById('feedback');
-    if (feedback) feedback.innerText = '';
 
-    // Inicia um novo cronômetro se a pergunta tiver um e for para exibir
-    // e se estiver aceitando respostas (para não reativar em 'showResults')
-    if (question.acceptingAnswers && question.endTime && question.timer?.showToAudience) {
+    // Adiciona botão de pular se aplicável
+    if (question.skippable) {
+        const skipButton = document.createElement('button');
+        skipButton.textContent = 'Pular Pergunta';
+        skipButton.className = 'secondary-button';
+        skipButton.onclick = () => submitAnswer('__SKIP__');
+        optionsContainer.appendChild(skipButton);
+    }
+
+    // Lógica do cronômetro (se houver)
+    if (question.endTime && question.timer?.showToAudience) {
         if (audienceTimerEl) {
             audienceTimerEl.style.display = 'block';
             currentTimer = new Cronometro(question.endTime, audienceTimerEl, () => {
-                // Quando o tempo acaba, bloqueia as respostas
-                const optionsContainer = document.getElementById('options-container');
-                if (optionsContainer) {
-                    optionsContainer.innerHTML = '<p>Tempo esgotado!</p>';
-                }
+                answerFeedback.innerText = 'Tempo esgotado! Tente novamente.';
+                // A lógica de EAMOS não bloqueia, apenas avisa.
             });
             currentTimer.start();
         }
     }
+}
+
+function submitAnswer(answer) {
+    socket.emit('submitAnswer', { sessionCode, questionId: currentQuestionId, answer });
+    optionsContainer.querySelectorAll('button, input').forEach(el => el.disabled = true);
+    answerFeedback.innerText = 'Verificando...';
+}
+
+// ===== EVENT LISTENERS DO SOCKET =====
+
+socket.on('connect', () => {
+    console.log('✅ Conectado ao servidor.');
+    if (!sessionCode) {
+        loginFeedback.innerText = "Erro: Código da sessão não encontrado na URL.";
+        joinBtn.disabled = true;
+    }
 });
 
-socket.on('themeChanged', ({ theme }) => {
-    console.log(`Recebido evento de mudança de tema: ${theme}`);
-    applyTheme(theme);
+socket.on('joinApproved', ({ firstQuestion, totalQuestions: count }) => {
+    loginFeedback.innerText = 'Aprovado! Carregando perguntas...';
+    totalQuestions = count;
+    setTimeout(() => {
+        showScreen('quiz');
+        renderQuestion(firstQuestion);
+    }, 1000);
+});
+
+socket.on('answerResult', ({ correct, nextQuestion }) => {
+    if (correct) {
+        answerFeedback.innerText = 'Resposta correta! Carregando próxima pergunta...';
+        setTimeout(() => {
+            renderQuestion(nextQuestion);
+        }, 1500);
+    } else {
+        answerFeedback.innerText = 'Resposta incorreta. Tente novamente!';
+        optionsContainer.querySelectorAll('button, input').forEach(el => el.disabled = false);
+    }
 });
 
 socket.on('error', (message) => {
@@ -132,34 +168,33 @@ socket.on('error', (message) => {
     window.location.href = '/index.html';
 });
 
-socket.on('connect', () => {
-    console.log('✅ Conectado ao servidor. Entrando na sessão da plateia...');
-    joinAudienceSession();
-});
-
-function submitAnswer(answer) {
-    const sessionCode = new URLSearchParams(window.location.search).get('session');
-    if (currentQuestionId === null) return;
-    if (currentTimer) {
-        currentTimer.stop(); // Para o cronômetro do usuário ao responder
-    }
-    socket.emit('submitAnswer', { sessionCode, questionId: currentQuestionId, answer });
-    const feedback = document.getElementById('feedback');
-    if (feedback) feedback.innerText = 'Sua resposta foi enviada! Obrigado.';
-    const optionsContainer = document.getElementById('options-container');
-    if (optionsContainer) optionsContainer.innerHTML = ''; // Limpa a área de resposta
-}
-
 socket.on('sessionEnded', (message) => {
     alert(message);
     window.location.href = '/';
 });
 
-socket.on('votingEnded', ({ questionId }) => {
-    if (currentQuestionId === questionId) {
-        const optionsContainer = document.getElementById('options-container');
-        if (optionsContainer) {
-            optionsContainer.innerHTML = '<p>Votação encerrada pelo apresentador.</p>';
-        }
+socket.on('themeChanged', ({ theme }) => applyTheme(theme));
+
+// ===== EVENT LISTENERS DA UI =====
+
+joinBtn.addEventListener('click', () => {
+    const name = nameInput.value.trim();
+    const password = passwordInput.value.trim();
+
+    if (!name || !password) {
+        loginFeedback.innerText = 'Por favor, preencha seu nome e a senha.';
+        return;
     }
+
+    joinBtn.disabled = true;
+    loginFeedback.innerText = 'Enviando pedido para entrar...';
+
+    socket.emit('requestJoin', { sessionCode, name, password }, (response) => {
+        if (response.success) {
+            loginFeedback.innerText = response.message; // "Aguardando aprovação..."
+        } else {
+            loginFeedback.innerText = `Erro: ${response.message}`;
+            joinBtn.disabled = false;
+        }
+    });
 });

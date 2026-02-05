@@ -2,21 +2,17 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tela de Apresentação</title>
-    <link rel="stylesheet" href="/styles/mindpool.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>EAMOS - Apresentação</title>    
+    <link rel="stylesheet" href="/styles/eamos.css">
     <link rel="stylesheet" href="/styles/presenter.css">
 </head>
 <body class="presenter-page">
     <div class="content">
-        <!-- Tela da Pergunta e Resultados (inicialmente oculta) -->
-        <div id="question-screen">
-            <div id="deadline-alert">TEMPO ESGOTADO</div>
-            <div id="presenter-timer"></div>
-            <h1 id="question-text"></h1>
-            <img id="question-image" src="">
-            <div id="results-container"></div>
-            <div id="word-cloud-container"></div>
+        <!-- Tela de Progresso dos Participantes -->
+        <div id="progress-screen">
+            <h1>Progresso dos Participantes</h1>
+            <div id="progress-bars-container"></div>
         </div>
     </div>
 
@@ -28,7 +24,7 @@
         </div>
         <div class="text-info">
             <p>Participe com o código:</p>
-            <h1 id="session-code-display"></h1>
+            <h1 id="session-code-display">------</h1>
         </div>
     </div>
 

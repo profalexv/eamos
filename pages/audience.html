@@ -2,18 +2,29 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Responder</title>
-    <link rel="stylesheet" href="/styles/mindpool.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>EAMOS - Participante</title>    <link rel="stylesheet" href="/styles/eamos.css">
 </head>
 <body>
     <div class="container">
-        <div id="audience-timer"></div>
-        <h1 id="question-title">Aguardando a próxima pergunta...</h1>
-        <div id="options-container">
-            <!-- As opções de resposta aparecerão aqui -->
+        <!-- Tela de Login -->
+        <div id="login-screen" class="form-section active">
+            <h1>Bem-vindo ao EAMOS</h1>
+            <input type="text" id="audience-name" placeholder="Seu nome">
+            <input type="password" id="audience-password" placeholder="Senha da sessão">
+            <button id="join-btn">Entrar</button>
+            <p id="login-feedback" class="feedback"></p>
         </div>
-        <p id="feedback"></p>
+
+        <!-- Tela de Quiz (inicialmente oculta) -->
+        <div id="quiz-screen" style="display: none;">
+            <div id="audience-timer"></div>
+            <h2 id="question-title">Aguardando a próxima pergunta...</h2>
+            <div id="options-container">
+                <!-- As opções de resposta aparecerão aqui -->
+            </div>
+            <p id="answer-feedback" class="feedback"></p>
+        </div>
     </div>
 
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>

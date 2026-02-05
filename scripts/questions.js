@@ -21,12 +21,13 @@ function registerQuestionHandlers(io, socket, sessions, logger) {
             text: question.text,
             imageUrl: question.imageUrl,
             questionType: question.questionType,
-            options: question.options,
+            options: question.options, // [{id, text}, ...]
+            correctAnswer: question.correctAnswer, // e.g., 'opt1' or ['opt1', 'opt3']
+            skippable: question.skippable || false,
             charLimit: question.charLimit,
             timer: question.timer,
-            results: {},
-            createdAt: Date.now(),
-            isConcluded: false // Flag para saber se a pergunta já foi encerrada
+            // 'results' e 'isConcluded' não são mais necessários no modelo EAMOS
+            createdAt: Date.now()
         });
 
         logAction(sessionCode, `PERGUNTA #${session.questions.length - 1} criada`);
@@ -41,37 +42,21 @@ function registerQuestionHandlers(io, socket, sessions, logger) {
 
         const question = session.questions[questionId];
         
-        if (session.activeQuestion === questionId || question.isConcluded) {
-            socket.emit('error', 'Não é possível editar uma pergunta ativa ou já encerrada.');
-            return;
-        }
+        // No modelo EAMOS, a edição pode ser mais flexível, mas ainda é prudente
+        // não editar perguntas enquanto usuários podem estar respondendo.
+        // Por simplicidade, vamos permitir a edição a qualquer momento.
 
         question.text = updatedQuestion.text || question.text;
         question.imageUrl = updatedQuestion.imageUrl || question.imageUrl;
         question.options = updatedQuestion.options || question.options;
+        question.correctAnswer = updatedQuestion.correctAnswer; // Pode ser undefined se não for alterado
+        question.skippable = updatedQuestion.skippable;
         question.charLimit = updatedQuestion.charLimit || question.charLimit;
         question.timer = updatedQuestion.timer || question.timer;
 
         logAction(sessionCode, `PERGUNTA #${questionId} editada`);
         io.to(sessionCode).emit('questionsUpdated', session.questions);
         if (callback) callback({ success: true });
-    });
-
-    // DUPLICAR UMA PERGUNTA
-    socket.on('duplicateQuestion', ({ sessionCode, questionId }) => {
-        const session = sessions[sessionCode];
-        if (!session || !session.questions[questionId]) return;
-
-        const originalQuestion = session.questions[questionId];
-        const newQuestion = JSON.parse(JSON.stringify(originalQuestion));
-        newQuestion.id = session.questions.length;
-        newQuestion.results = {};
-        newQuestion.createdAt = Date.now();
-
-        session.questions.push(newQuestion);
-
-        logAction(sessionCode, `PERGUNTA #${questionId} duplicada para #${newQuestion.id}`);
-        io.to(sessionCode).emit('questionsUpdated', session.questions);
     });
 
     // DELETAR UMA PERGUNTA
@@ -92,70 +77,13 @@ function registerQuestionHandlers(io, socket, sessions, logger) {
             session.questions[i].id = i;
         }
 
-        // Se a pergunta ativa era posterior à deletada, atualiza seu ID
-        if (session.activeQuestion !== null && session.activeQuestion > questionId) {
-            session.activeQuestion--;
-        }
-
         logAction(sessionCode, `PERGUNTA #${questionId} deletada`);
         io.to(sessionCode).emit('questionsUpdated', session.questions);
     });
-    // INICIAR UMA PERGUNTA
-    socket.on('startQuestion', ({ sessionCode, questionId }) => {
-        const session = sessions[sessionCode];
-        if (session && session.questions[questionId]) {
-            session.activeQuestion = questionId;
-            const question = session.questions[questionId];
-            question.results = {};
-            question.acceptingAnswers = true;
-            question.isConcluded = false; // Reseta o estado ao re-iniciar
-            question.endTime = null;
-            
-            if (question.timer && question.timer.duration > 0) {
-                question.endTime = Date.now() + (question.timer.duration * 1000);
-            }
-            
-            if (question.questionType === 'options' && question.options) {
-                question.options.forEach(opt => question.results[opt.id] = 0);
-            } else if (question.questionType === 'yes_no') {
-                question.results['yes'] = 0;
-                question.results['no'] = 0;
-            }
-            
-            logAction(sessionCode, `PERGUNTA #${questionId} iniciada`);
-            logger.info(`EMITTING 'newQuestion' to room ${sessionCode}`);
-            io.to(sessionCode).emit('newQuestion', { ...question });
-        }
-    });
 
-    // PARAR UMA PERGUNTA
-    socket.on('stopQuestion', ({ sessionCode, questionId }) => {
-        const session = sessions[sessionCode];
-        if (session && session.questions[questionId]) {
-            const question = session.questions[questionId];
-            question.acceptingAnswers = false;
-            question.isConcluded = true; // Marca como encerrada
-            
-            logAction(sessionCode, `PERGUNTA #${questionId} parada`);
-            io.to(sessionCode).emit('votingEnded', { questionId });
-            // Envia a atualização para que a UI do controller mude os botões
-            io.to(sessionCode).emit('questionsUpdated', session.questions);
-        }
-    });
-
-    // EXIBIR RESULTADOS DE UMA PERGUNTA JÁ ENCERRADA
-    socket.on('showResults', ({ sessionCode, questionId }) => {
-        const session = sessions[sessionCode];
-        if (session && session.questions[questionId] && session.questions[questionId].isConcluded) {
-            session.activeQuestion = questionId;
-            const question = session.questions[questionId];
-            question.acceptingAnswers = false; // Não aceita novas respostas
-
-            logAction(sessionCode, `EXIBINDO RESULTADOS da pergunta #${questionId}`);
-            io.to(sessionCode).emit('newQuestion', { ...question }); // Envia a pergunta para a tela
-            io.to(sessionCode).emit('updateResults', { results: question.results, questionType: question.questionType }); // Envia os resultados
-        }
-    });
+    // Os eventos 'startQuestion', 'stopQuestion', 'showResults', 'duplicateQuestion'
+    // não se aplicam ao modelo EAMOS de quiz individual e foram removidos.
+    // O progresso é gerenciado por usuário.
 }
 
 module.exports = { registerQuestionHandlers };
