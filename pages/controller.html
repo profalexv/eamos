@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel de Controle</title>
+    <link rel="stylesheet" href="/styles/mindpool.css">
+    <link rel="stylesheet" href="/styles/controller.css">
+</head>
+<body class="controller-page">
+    <header class="controller-header">
+        <h1>Sessão <span id="session-code"></span></h1>
+        <div class="session-management">
+            <div class="controls-group">
+                <span id="audience-counter" title="Participantes na sessão"></span>
+                <label for="session-theme-switcher">Tema:</label>
+                <select id="session-theme-switcher">
+                    <option value="light">Claro</option>
+                    <option value="dark">Escuro</option>
+                    <option value="corporate">Corporativo</option>
+                    <option value="fun">Divertido</option>
+                    <option value="sublime">Sublime</option>
+                </select>
+            </div>
+            <div class="controls-group">
+                <button id="open-presenter-btn">Abrir Apresentação</button>
+                <button id="toggle-url-btn" class="secondary-button">Exibir Endereço</button>
+                <button id="end-session-btn" class="danger">Encerrar Sessão</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="controller-main-content">
+        <div class="form-column">
+            <div class="question-form">
+                <h2>Criar Nova Pergunta</h2>
+
+                <label for="question-text">Texto da Pergunta</label>
+                <input type="text" id="question-text" placeholder="Ex: Qual sua cor favorita?">
+
+                <label for="question-image">URL da Imagem (Opcional)</label>
+                <input type="text" id="question-image" placeholder="https://exemplo.com/imagem.png">
+
+                <label for="question-type">Tipo de Resposta</label>
+                <select id="question-type">
+                    <option value="options" selected>Opções (múltipla escolha)</option>
+                    <option value="yes_no">Sim / Não</option>
+                    <option value="short_text">Texto Curto</option>
+                    <option value="long_text">Texto Longo</option>
+                    <option value="number">Número</option>
+                    <option value="integer">Número Inteiro</option>
+                </select>
+
+                <div id="options-config" class="type-config active">
+                    <label for="question-options">Opções da Pergunta</label>
+                    <input type="text" id="question-options" placeholder="Separadas por vírgula (ex: Opção 1, Opção 2)">
+                </div>
+                <div id="text-config" class="type-config">
+                    <label for="char-limit">Limite de Caracteres</label>
+                    <input type="number" id="char-limit" placeholder="Ex: 50">
+                </div>
+
+                <div class="timer-config">
+                    <label class="timer-toggle">
+                        <input type="checkbox" id="timer-enabled">Habilitar Cronômetro
+                    </label>
+                    <div id="timer-options">
+                        <label for="timer-duration">Duração (minutos)</label>
+                        <input type="number" id="timer-duration" placeholder="Ex: 1">
+                        <label class="timer-audience-toggle">
+                            <input type="checkbox" id="timer-show-audience">Exibir para a audiência
+                        </label>
+                    </div>
+                </div>
+
+                <button id="create-question-btn">Criar Pergunta</button>
+                <button id="cancel-edit-btn" class="secondary-button" style="display: none; margin-top: 10px;">Cancelar Edição</button>
+            </div>
+
+            <div id="presenter-preview-container">
+                <h3>Prévia do Apresentador</h3>
+                <div id="presenter-preview-box" title="Clique para ampliar">
+                    <!-- Iframe será inserido aqui -->
+                </div>
+            </div>
+        </div>
+        <div class="list-column">
+            <div class="question-list">
+                <div class="list-header">
+                    <h2>Perguntas Criadas</h2>
+                    <div class="list-header-buttons">
+                        <button id="load-questions-btn" class="secondary-button">Carregar Perguntas</button>
+                        <button id="save-questions-btn" class="secondary-button">Salvar Perguntas</button>
+                    </div>
+                </div>
+                <div id="questions-container">
+                    <p>Nenhuma pergunta criada ainda.</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div id="toast-container"></div>
+
+    <!-- Modal para a prévia ampliada -->
+    <div id="preview-modal-overlay" style="display: none;">
+        <!-- O iframe será movido para cá quando o modal for aberto -->
+    </div>
+
+    <input type="file" id="load-questions-input" accept=".json" style="display: none;">
+
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="/scripts/cronometro.js"></script>
+    <script src="/scripts/controller.js"></script>
+</body>
+</html>

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acesso Administrativo</title>
+    <link rel="stylesheet" href="/styles/mindpool.css">
+</head>
+<body class="admin-page centered-layout">
+    <div class="container">
+        <h1 id="page-title"></h1>
+        <p id="error-message" style="display: none;"></p>
+
+        <!-- Botões de Ação Principal -->
+        <div id="action-buttons" class="form-section">
+            <button id="create-session-main-btn">
+                ➕ CRIAR SESSÃO
+            </button>
+            <button id="join-session-main-btn">
+                🔗 ENTRAR EM SESSÃO
+            </button>
+            <button id="back-to-index-btn" class="back-button" style="margin-top: 15px;">Voltar para o Início</button>
+        </div>
+
+        <!-- Formulário para Nova Sessão -->
+        <div id="new-session-form" class="form-section">
+            <div class="form-header">
+                <button class="back-to-menu-btn back-button">← Voltar</button>
+            </div>
+            <h2>Criar Nova Sessão</h2>
+            <label for="session-deadline">Horário Final da Sessão (Opcional)</label>
+            <input type="time" id="session-deadline">
+            <input type="password" id="new-controller-pass" placeholder="Crie uma senha para o Controller">
+            <input type="password" id="new-presenter-pass" placeholder="Crie uma senha para o Presenter">
+            <label for="session-theme" style="margin-top: 10px; display: block;">Tema da Apresentação:</label>
+            <select id="session-theme" name="session-theme">
+                <option value="light" selected>Claro (Light)</option>
+                <option value="dark">Escuro (Dark)</option>
+                <option value="corporate">Azul Corporativo</option>
+                <option value="fun">Divertido (Fun)</option>
+                <option value="sublime">Sublime</option>
+            </select>
+            <button id="create-session-btn">Criar e Entrar</button>
+        </div>
+
+        <!-- Formulário para Entrar em Sessão -->
+        <div id="join-session-form" class="form-section">
+            <div class="form-header">
+                <button class="back-to-menu-btn back-button">← Voltar</button>
+            </div>
+            <h2>Entrar em Sessão</h2>
+            <input type="text" id="join-session-code" placeholder="Código da Sessão">
+            <input type="password" id="join-session-pass" placeholder="Senha">
+            <button id="join-session-btn">Entrar em Sessão</button>
+        </div>
+    </div>
+
+   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+   <script src="/scripts/admin.js?v=2"></script>
+</body>
+</html>

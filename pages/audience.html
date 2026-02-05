@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Responder</title>
+    <link rel="stylesheet" href="/styles/mindpool.css">
+</head>
+<body>
+    <div class="container">
+        <div id="audience-timer"></div>
+        <h1 id="question-title">Aguardando a próxima pergunta...</h1>
+        <div id="options-container">
+            <!-- As opções de resposta aparecerão aqui -->
+        </div>
+        <p id="feedback"></p>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="/scripts/cronometro.js"></script>
+    <script src="/scripts/audience.js"></script>
+</body>
+</html>
