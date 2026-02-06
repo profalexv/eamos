@@ -20,20 +20,14 @@ function registerQuestionHandlers(io, socket, sessions, logger) {
         const newQuestionId = (session.nextQuestionId || session.questions.length);
         session.nextQuestionId = newQuestionId + 1;
 
-        session.questions.push({
+        // Cria o objeto da nova pergunta, incluindo todas as propriedades enviadas pelo cliente
+        const newQuestion = {
+            ...question,
             id: newQuestionId,
-            text: question.text,
-            imageUrl: question.imageUrl,
-            questionType: question.questionType,
-            options: question.options, // [{id, text}, ...]
-            correctAnswer: question.correctAnswer, // e.g., 'opt1' or ['opt1', 'opt3']
-            skippable: question.skippable || false,
-            charLimit: question.charLimit,
-            timer: question.timer,
-            // 'results' e 'isConcluded' não são mais necessários no modelo EAMOS
             createdAt: Date.now()
-        });
+        };
 
+        session.questions.push(newQuestion);
         logAction(sessionCode, `PERGUNTA #${newQuestionId} criada`);
         io.to(sessionCode).emit('questionsUpdated', session.questions);
         if (callback) callback({ success: true });
@@ -47,19 +41,11 @@ function registerQuestionHandlers(io, socket, sessions, logger) {
         const questionIndex = session.questions.findIndex(q => q && q.id === questionId);
         if (questionIndex === -1) return;
 
-        const question = session.questions[questionIndex];
-
         // No modelo EAMOS, a edição pode ser mais flexível, mas ainda é prudente
         // não editar perguntas enquanto usuários podem estar respondendo.
         // Por simplicidade, vamos permitir a edição a qualquer momento.
-
-        question.text = updatedQuestion.text || question.text;
-        question.imageUrl = updatedQuestion.imageUrl || question.imageUrl;
-        question.options = updatedQuestion.options || question.options;
-        question.correctAnswer = updatedQuestion.correctAnswer; // Pode ser undefined se não for alterado
-        question.skippable = updatedQuestion.skippable;
-        question.charLimit = updatedQuestion.charLimit || question.charLimit;
-        question.timer = updatedQuestion.timer || question.timer;
+        const questionToUpdate = session.questions[questionIndex];
+        Object.assign(questionToUpdate, updatedQuestion); // Atualiza a pergunta existente com os novos dados
 
         logAction(sessionCode, `PERGUNTA #${questionId} editada`);
         io.to(sessionCode).emit('questionsUpdated', session.questions);

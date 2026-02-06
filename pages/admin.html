@@ -31,7 +31,17 @@
             <label for="session-deadline">Horário Final da Sessão (Opcional)</label>
             <input type="time" id="session-deadline">
             <input type="password" id="new-controller-pass" placeholder="Crie uma senha para o Controller">
-            <input type="password" id="new-presenter-pass" placeholder="Crie uma senha para o Presenter">
+            <div class="form-group">
+                <input type="password" id="new-presenter-pass" placeholder="Crie uma senha para o Presenter">
+            </div>
+            <div class="form-group-options">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="repeat-controller-pass" checked> Usar a mesma senha do Controller
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="no-presenter-pass"> Sem senha para o Apresentador
+                </label>
+            </div>
             <label for="session-theme" style="margin-top: 10px; display: block;">Tema da Apresentação:</label>
             <select id="session-theme" name="session-theme">
                 <option value="light" selected>Claro (Light)</option>

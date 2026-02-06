@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Script para iniciar MindPool em diferentes ambientes
+# Script para iniciar EAMOS em diferentes ambientes
 # Uso: ./start.sh [ambiente]
 # Ambientes: local, dev (com nodemon), production
 
 AMBIENTE=${1:-local}
 
-echo "🚀 Iniciando MindPool - Ambiente: $AMBIENTE"
+echo "🚀 Iniciando EAMOS - Ambiente: $AMBIENTE"
 echo ""
 
 # Verificar se node_modules existe
@@ -48,8 +48,8 @@ case $AMBIENTE in
     
     production)
         echo "📌 Modo produção (Render)"
-        echo "🔗 Frontend: https://mindpool.alexandre.pro.br"
-        echo "🔗 Backend: https://mindpool-backend.onrender.com"
+        echo "🔗 Frontend: https://eamos.alexandre.pro.br"
+        echo "🔗 Backend: https://eamos-backend.onrender.com"
         echo ""
         NODE_ENV=production node server.js
         ;;

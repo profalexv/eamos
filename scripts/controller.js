@@ -15,6 +15,7 @@ const socket = io(getBackendUrl(), {
 });
 let sessionDeadline = null;
 let currentQuestions = []; // Armazena a lista de perguntas da sessão
+let previousUsers = {}; // Armazena o estado anterior da lista de usuários para notificações
 
 /**
  * Aplica um tema visual ao body, trocando a classe de tema.
@@ -33,10 +34,12 @@ function applyTheme(theme = 'light') {
 const ui = {
     editingQuestionId: null, // To track which question is being edited
     sortableInstance: null,
+    progressModalViewIndex: 0,
     elements: {
         sessionCodeDisplay: document.getElementById('session-code'),
         questionTypeSelect: document.getElementById('question-type'),
-        optionsConfig: document.getElementById('options-config'),
+        optionsConfig: document.getElementById('options-config'), // Container para toda a config de opções
+        textAnswerConfig: document.getElementById('text-answer-config'), // Container para config de resposta de texto
         textConfig: document.getElementById('text-config'),
         timerEnabledCheckbox: document.getElementById('timer-enabled'),
         timerOptionsDiv: document.getElementById('timer-options'),
@@ -44,6 +47,7 @@ const ui = {
         cancelEditBtn: document.getElementById('cancel-edit-btn'),
         openPresenterBtn: document.getElementById('open-presenter-btn'),
         toggleUrlBtn: document.getElementById('toggle-url-btn'),
+        resetAllBtn: document.getElementById('reset-all-btn'),
         endSessionBtn: document.getElementById('end-session-btn'),
         questionsContainer: document.getElementById('questions-container'),
         saveQuestionsBtn: document.getElementById('save-questions-btn'),
@@ -54,15 +58,45 @@ const ui = {
         audienceListContainer: document.getElementById('audience-list-container'),
         toastContainer: document.getElementById('toast-container'),
         formColumn: document.querySelector('.form-column'),
-        presenterPreviewBox: document.getElementById('presenter-preview-box'),
-        previewModalOverlay: document.getElementById('preview-modal-overlay'),
+        notificationSound: document.getElementById('notification-sound'),
+        // New elements
+        sessionCodeContainer: document.getElementById('session-code-container'),
+        headerRankingContainer: document.getElementById('header-ranking-container'),
+        progressModalOverlay: document.getElementById('progress-modal-overlay'),
+        progressModalContent: document.getElementById('progress-modal-content'),
+        progressModalBody: document.getElementById('progress-modal-body'),
+        progressModalClose: document.getElementById('progress-modal-close'),
+        // Novos elementos para controle da visão do presenter
+        presenterViewModeSelect: document.getElementById('presenter-view-mode'),
+        chartTypeOptions: document.getElementById('chart-type-options'),
+        presenterShowRankPositionCheckbox: document.getElementById('presenter-show-rank-position'),
+        chartTypeRadios: document.querySelectorAll('input[name="chart-type"]'),
+        audienceViewModeCheckboxes: document.querySelectorAll('input[name="audience-view-mode"]'),
         // Inputs do formulário
         questionTextInput: document.getElementById('question-text'),
+        correctAnswerInput: document.getElementById('correct-answer'),
+        additionalAnswersContainer: document.getElementById('additional-answers-container'),
+        addAnswerBtn: document.getElementById('add-answer-btn'),
         imageUrlInput: document.getElementById('question-image'),
-        optionsTextInput: document.getElementById('question-options'),
+        mediaUrlInput: document.getElementById('media-url'),
+        optionsList: document.getElementById('options-list'),
+        addOptionBtn: document.getElementById('add-option-btn'),
         charLimitInput: document.getElementById('char-limit'),
         timerDurationInput: document.getElementById('timer-duration'),
         timerShowAudienceCheckbox: document.getElementById('timer-show-audience'),
+        // MCQ Logic
+        mcqLogicConfig: document.getElementById('mcq-logic-config'),
+        mcqAcceptMultipleCheckbox: document.getElementById('mcq-accept-multiple'),
+        mcqRequireAllLabel: document.getElementById('mcq-require-all-label'),
+        mcqRequireAllCheckbox: document.getElementById('mcq-require-all'),
+        // Skip logic inputs
+        skipConfigYesNo: document.getElementById('skip-config-yesno'),
+        skipOnWrongCheckbox: document.getElementById('skip-on-wrong'),
+        skipConfigMcqNumber: document.getElementById('skip-config-mcq-number'),
+        autoSkipAttemptsMcqInput: document.getElementById('auto-skip-attempts-mcq'),
+        skipConfigText: document.getElementById('skip-config-text'),
+        allowSkipAttemptsInput: document.getElementById('allow-skip-attempts'),
+        autoSkipAttemptsTextInput: document.getElementById('auto-skip-attempts-text'),
     },
 
     setCreateButtonState(isLoading) {
@@ -86,13 +120,34 @@ const ui = {
         }
 
         this.elements.timerEnabledCheckbox?.addEventListener('change', (e) => this.toggleTimerOptions(e.target.checked));
-        this.elements.questionTypeSelect?.addEventListener('change', (e) => this.toggleQuestionTypeOptions(e.target.value));
 
-        this.setupPresenterPreview();
+        // Listeners para os botões de adicionar dinâmico
+        this.elements.addAnswerBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.addAnswerInput();
+        });
+        this.elements.addOptionBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.addOptionInput();
+        });
 
         // Add listeners to remove validation error on input
         this.elements.questionTextInput.addEventListener('input', () => this.elements.questionTextInput.classList.remove('invalid'));
-        this.elements.optionsTextInput.addEventListener('input', () => this.elements.optionsTextInput.classList.remove('invalid'));
+
+        // Listener for clickable session code
+        this.elements.sessionCodeContainer?.addEventListener('click', () => {
+            const sessionCode = this.elements.sessionCodeDisplay.innerText;
+            const audienceUrl = `${window.location.origin}/pages/audience.html?session=${sessionCode}`;
+            navigator.clipboard.writeText(audienceUrl).then(() => {
+                this.showToast('Link de acesso copiado!');
+            }).catch(err => {
+                console.error('Falha ao copiar o link: ', err);
+                this.showToast('Falha ao copiar o link.', 'error');
+            });
+        });
+
+        // Listeners for progress modal
+        this.setupProgressModal();
 
         this.elements.createBtn?.addEventListener('click', () => {
             this.setCreateButtonState(true);
@@ -127,6 +182,12 @@ const ui = {
             const newVisibility = !isHiding;
             socketHandler.toggleAudienceUrl(newVisibility);
             this.elements.toggleUrlBtn.innerText = newVisibility ? 'Ocultar Endereço' : 'Exibir Endereço';
+        });
+
+        this.elements.resetAllBtn?.addEventListener('click', () => {
+            if (confirm('Tem certeza que deseja zerar o progresso de TODOS os participantes?')) {
+                socketHandler.resetAllUsersProgress();
+            }
         });
 
         if (this.elements.openPresenterBtn) {
@@ -170,6 +231,17 @@ const ui = {
             animation: 150,
             handle: '.drag-handle', // Classe do elemento que aciona o arrastar
             onEnd: (evt) => {
+                // Previne o bug do SortableJS onde o onEnd é chamado ao filtrar
+                if (evt.oldIndex === undefined || evt.newIndex === undefined) {
+                    return;
+                }
+
+                // Verifica se o item foi realmente movido para uma nova posição
+                if (evt.oldIndex === evt.newIndex && evt.from === evt.to) {
+                    return;
+                }
+
+
                 // Reordena o array local
                 const [movedItem] = currentQuestions.splice(evt.oldIndex, 1);
                 currentQuestions.splice(evt.newIndex, 0, movedItem);
@@ -177,107 +249,141 @@ const ui = {
                 socketHandler.reorderQuestions(currentQuestions);
             },
         });
-    },
 
-    setupPresenterPreview() {
-        const sessionCode = new URLSearchParams(window.location.search).get('session');
-        const presenterPassword = sessionStorage.getItem('eamos_presenter_pass');
-        const previewContainer = document.getElementById('presenter-preview-container');
+        // --- Listeners para Controle da Visão do Presenter ---
+        console.log("DEBUG: Procurando elementos de controle do presenter...");
+        console.log("DEBUG: Select de modo:", this.elements.presenterViewModeSelect);
+        console.log("DEBUG: Opções de gráfico:", this.elements.chartTypeOptions);
 
-        if (!presenterPassword || !this.elements.presenterPreviewBox || !previewContainer) {
-            if (previewContainer) previewContainer.style.display = 'none';
-            return;
-        }
+        this.elements.presenterViewModeSelect?.addEventListener('change', () => {
+            this.handlePresenterModeChange(socketHandler);
+        });
 
-        // Limpa qualquer prévia anterior para evitar duplicatas em cenários de recarregamento
-        this.elements.presenterPreviewBox.innerHTML = '';
+        this.elements.chartTypeRadios.forEach(radio => {
+            radio.addEventListener('change', () => {
+                this.handlePresenterModeChange(socketHandler);
+            });
+        });
 
-        // --- Criação do Iframe ---
-        const iframe = document.createElement('iframe');
-        iframe.id = 'presenter-preview-iframe';
-        localStorage.setItem('eamos_temp_pass', presenterPassword);
-        iframe.src = `/pages/presenter.html?session=${sessionCode}`;
+        this.elements.presenterShowRankPositionCheckbox?.addEventListener('change', () => {
+            this.handlePresenterModeChange(socketHandler);
+        });
 
-        // --- Lógica de Escala ---
-        const iframeWidth = 1280;
-        const iframeHeight = 720;
+        this.elements.audienceViewModeCheckboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                this.handleAudienceViewChange(socketHandler);
+            });
+        });
+
+        this.elements.questionTypeSelect.addEventListener('change', () => {
+            this.toggleQuestionTypeOptions(this.elements.questionTypeSelect.value);
+            });
         
-        const setThumbnailScale = () => {
-            if (!this.elements.presenterPreviewBox.isConnected) return;
-            const previewBoxWidth = this.elements.presenterPreviewBox.offsetWidth;
-            const scale = previewBoxWidth / iframeWidth;
-            iframe.style.transform = `scale(${scale})`;
-            // Ajusta a altura do container para manter o aspect ratio
-            this.elements.presenterPreviewBox.style.height = `${iframeHeight * scale}px`;
-        };
-
-        iframe.onload = () => {
-            setThumbnailScale();
-            this.elements.presenterPreviewBox.appendChild(iframe);
-        };
-        window.addEventListener('resize', setThumbnailScale);
-
-        // --- Lógica do Modal ---
-        const openModal = () => {
-            const modalWidth = window.innerWidth * 0.9;
-            const modalHeight = window.innerHeight * 0.9;
-            const scale = Math.min(modalWidth / iframeWidth, modalHeight / iframeHeight);
-            iframe.style.transform = `scale(${scale})`;
-            this.elements.previewModalOverlay.appendChild(iframe);
-            this.elements.previewModalOverlay.style.display = 'flex';
-        };
-
-        const closeModal = () => {
-            this.elements.presenterPreviewBox.appendChild(iframe);
-            this.elements.previewModalOverlay.style.display = 'none';
-            setThumbnailScale(); // Recalcula a escala da miniatura
-        };
-
-        this.elements.presenterPreviewBox.addEventListener('click', openModal);
-        this.elements.previewModalOverlay.addEventListener('click', closeModal);
+        this.elements.mcqAcceptMultipleCheckbox?.addEventListener('change', (e) => {
+            const showRequireAll = e.target.checked;
+            this.elements.mcqRequireAllLabel.style.display = showRequireAll ? 'flex' : 'none';
+            if (!showRequireAll) this.elements.mcqRequireAllCheckbox.checked = false;
+        });
     },
 
     getQuestionData() {
         // Clear previous validation errors
         this.elements.questionTextInput.classList.remove('invalid');
-        this.elements.optionsTextInput.classList.remove('invalid');
 
         let isValid = true;
 
         const questionText = this.elements.questionTextInput.value.trim();
-        if (!questionText) {
+
+        const questionType = this.elements.questionTypeSelect.value;
+
+        const question = {
+            text: questionText,
+            correctAnswer: [], // Será preenchido abaixo
+            imageUrl: this.elements.imageUrlInput.value || null,
+            mediaUrl: this.elements.mediaUrlInput.value || null,
+            questionType: questionType,
+            options: null,
+            charLimit: null,
+            timer: null,
+            skipConfig: {},
+            answerConfig: {} // Para lógica de MCQ
+        };
+
+        // Validação e coleta de dados por tipo de pergunta
+        if (!question.text) {
             this.elements.questionTextInput.classList.add('invalid');
             this.elements.questionTextInput.focus();
             isValid = false;
         }
 
-        const questionType = this.elements.questionTypeSelect.value;
+        if (['short_text', 'long_text'].includes(questionType)) {
+            const mainAnswer = this.elements.correctAnswerInput.value.trim();
+            if (!mainAnswer) {
+                this.elements.correctAnswerInput.classList.add('invalid');
+                if (isValid) this.elements.correctAnswerInput.focus();
+                isValid = false;
+            } else {
+                question.correctAnswer.push(mainAnswer);
+            }
+            this.elements.additionalAnswersContainer.querySelectorAll('input').forEach(input => {
+                const altAnswer = input.value.trim();
+                if (altAnswer) question.correctAnswer.push(altAnswer);
+            });
+        }
+
         if (questionType === 'options') {
-            const optionsText = this.elements.optionsTextInput.value.trim();
-            if (!optionsText) {
-                this.elements.optionsTextInput.classList.add('invalid');
-                if (isValid) this.elements.optionsTextInput.focus(); // Focus only if it's the first error
+            const optionRows = this.elements.optionsList.querySelectorAll('.dynamic-input-row');
+            if (optionRows.length < 2) {
+                this.showToast('Perguntas de múltipla escolha devem ter pelo menos 2 opções.', 'error');
                 isValid = false;
             }
-        }
-        
-        if (!isValid) {
-            return null;
+
+            question.options = [];
+            optionRows.forEach((row, index) => {
+                const optionText = row.querySelector('input[type="text"]').value.trim();
+                const isCorrect = row.querySelector('input[type="checkbox"]').checked;
+                const optionId = `opt${index}`;
+                
+                if (optionText) {
+                    question.options.push({ id: optionId, text: optionText });
+                    if (isCorrect) {
+                        question.correctAnswer.push(optionId);
+                    }
+                }
+            });
+
+            if (question.correctAnswer.length === 0) {
+                this.showToast('Selecione pelo menos uma resposta correta para a pergunta.', 'error');
+                isValid = false;
+            }
+            question.answerConfig.acceptMultiple = this.elements.mcqAcceptMultipleCheckbox.checked;
+            question.answerConfig.requireAll = this.elements.mcqRequireAllCheckbox.checked;
         }
 
-        const question = {
-            text: questionText,
-            imageUrl: this.elements.imageUrlInput.value || null,
-            questionType: questionType,
-            options: null,
-            charLimit: null,
-            timer: null
-        };
+        if (question.questionType === 'short_text') {
+            question.charLimit = parseInt(this.elements.charLimitInput.value) || 25;
+        } else if (question.questionType === 'long_text') {
+            question.charLimit = null; // No limit
+        }
 
-        if (question.questionType === 'options') {
-            question.options = this.elements.optionsTextInput.value.split(',').map((opt, index) => ({ id: `opt${index}`, text: opt.trim() }));
-        } else if (['short_text', 'long_text'].includes(question.questionType)) {
-            question.charLimit = parseInt(this.elements.charLimitInput.value) || (question.questionType === 'short_text' ? 50 : 280);
+        // Get Skip Logic Config
+        switch (question.questionType) {
+            case 'yes_no':
+                question.skipConfig.autoSkipOnWrong = this.elements.skipOnWrongCheckbox.checked;
+                break;
+            case 'options':
+            case 'number':
+            case 'integer':
+                const autoSkipMcq = parseInt(this.elements.autoSkipAttemptsMcqInput.value);
+                if (autoSkipMcq > 0) question.skipConfig.autoSkipAfter = autoSkipMcq;
+                break;
+            case 'short_text':
+            case 'long_text':
+                const allowSkip = parseInt(this.elements.allowSkipAttemptsInput.value);
+                const autoSkipText = parseInt(this.elements.autoSkipAttemptsTextInput.value);
+                if (allowSkip > 0) question.skipConfig.allowSkipAfter = allowSkip;
+                if (autoSkipText > 0) question.skipConfig.autoSkipAfter = autoSkipText;
+                break;
         }
 
         if (this.elements.timerEnabledCheckbox.checked) {
@@ -289,18 +395,84 @@ const ui = {
                 };
             }
         }
+
+        if (!isValid) return null;
         return question;
     },
 
     clearForm() {
         this.elements.questionTextInput.value = '';
-        this.elements.optionsTextInput.value = '';
         this.elements.imageUrlInput.value = '';
+        this.elements.mediaUrlInput.value = '';
+        this.elements.correctAnswerInput.value = '';
+        this.elements.additionalAnswersContainer.innerHTML = '';
+        this.elements.optionsList.innerHTML = '';
         this.elements.charLimitInput.value = '';
         this.elements.timerEnabledCheckbox.checked = false;
         this.elements.timerDurationInput.value = '';
         this.elements.timerShowAudienceCheckbox.checked = false;
         this.toggleTimerOptions(false);
+        // Clear MCQ logic
+        this.elements.mcqAcceptMultipleCheckbox.checked = false;
+        this.elements.mcqRequireAllCheckbox.checked = false;
+        this.elements.mcqRequireAllLabel.style.display = 'none';
+        // Clear skip logic
+        this.elements.skipOnWrongCheckbox.checked = true; // Default for yes/no
+        this.elements.autoSkipAttemptsMcqInput.value = '';
+        this.elements.allowSkipAttemptsInput.value = '';
+        this.elements.autoSkipAttemptsTextInput.value = '';
+        // Set default question type
+        this.elements.questionTypeSelect.value = 'short_text';
+        this.toggleQuestionTypeOptions('short_text');
+    },
+
+    setupProgressModal() {
+        const openModal = () => {
+            this.progressModalViewIndex = 0; // Reset to first view
+            this.renderProgressModalContent();
+            this.elements.progressModalOverlay.style.display = 'flex';
+        };
+
+        const closeModal = () => {
+            this.elements.progressModalOverlay.style.display = 'none';
+        };
+
+        const cycleView = (e) => {
+            // Prevent closing when clicking inside the content, but not on the close button
+            if (e.target.id === 'progress-modal-close') return;
+            
+            this.progressModalViewIndex++;
+            this.renderProgressModalContent();
+        };
+
+        this.elements.headerRankingContainer?.addEventListener('click', openModal);
+        this.elements.progressModalClose?.addEventListener('click', closeModal);
+        this.elements.progressModalContent?.addEventListener('click', cycleView);
+    },
+
+    addAnswerInput(value = '') {
+        const container = this.elements.additionalAnswersContainer;
+        const div = document.createElement('div');
+        div.className = 'dynamic-input-row';
+        div.innerHTML = `
+            <input type="text" value="${value}" placeholder="Resposta alternativa">
+            <button class="remove-btn" title="Remover resposta">X</button>
+        `;
+        div.querySelector('.remove-btn').onclick = () => div.remove();
+        container.appendChild(div);
+    },
+
+    addOptionInput(text = '', isCorrect = false) {
+        const container = this.elements.optionsList;
+        const div = document.createElement('div');
+        div.className = 'dynamic-input-row';
+        div.innerHTML = `
+            <input type="checkbox" ${isCorrect ? 'checked' : ''} title="Marcar como resposta correta">
+            <input type="text" value="${text}" placeholder="Texto da opção">
+            <button class="remove-btn" title="Remover opção">X</button>
+        `;
+        div.querySelector('.remove-btn').onclick = () => div.remove();
+        container.appendChild(div);
     },
 
     exitEditMode() {
@@ -310,11 +482,75 @@ const ui = {
         this.elements.cancelEditBtn.style.display = 'none';
     },
 
+    handlePresenterModeChange(socketHandler) {
+        if (!this.elements.presenterViewModeSelect) return;
+
+        const mode = this.elements.presenterViewModeSelect.value;
+        const chartTypeRadio = document.querySelector('input[name="chart-type"]:checked');
+        const chartType = chartTypeRadio ? chartTypeRadio.value : 'bar';
+        const showRankPosition = this.elements.presenterShowRankPositionCheckbox.checked;
+
+        // Mostra/oculta opções de tipo de gráfico
+        const showChartOptions = ['individual', 'overall'].includes(mode);
+        this.elements.chartTypeOptions.style.display = showChartOptions ? 'block' : 'none';
+        this.elements.presenterShowRankPositionCheckbox.parentElement.style.display = mode === 'ranking' ? 'flex' : 'none';
+
+        socketHandler.changePresenterMode(mode, chartType, showRankPosition);
+    },
+
+    handleAudienceViewChange(socketHandler) {
+        if (!this.elements.audienceViewModeCheckboxes) return;
+
+        const allowedViews = Array.from(this.elements.audienceViewModeCheckboxes)
+            .filter(cb => cb.checked)
+            .map(cb => cb.value);
+        
+        socketHandler.changeAudienceView(allowedViews);
+    },
+
+    setAudienceViewControls(audienceView) {
+        if (!audienceView || !this.elements.audienceViewModeCheckboxes) return;
+        this.elements.audienceViewModeCheckboxes.forEach(checkbox => {
+            checkbox.checked = audienceView.includes(checkbox.value);
+        });
+    },
+
+    setPresenterModeControls(presenterMode) {
+        if (!presenterMode || !this.elements.presenterViewModeSelect) return;
+
+        this.elements.presenterViewModeSelect.value = presenterMode.mode;
+        this.elements.presenterShowRankPositionCheckbox.checked = presenterMode.showRankPosition || false;
+        this.elements.presenterShowRankPositionCheckbox.parentElement.style.display = presenterMode.mode === 'ranking' ? 'flex' : 'none';
+
+        const showChartOptions = ['individual', 'overall'].includes(presenterMode.mode);
+        this.elements.chartTypeOptions.style.display = showChartOptions ? 'block' : 'none';
+
+        if (showChartOptions && presenterMode.chartType) {
+            const radio = document.querySelector(`input[name="chart-type"][value="${presenterMode.chartType}"]`);
+            if (radio) radio.checked = true;
+        }
+    },
+
     toggleTimerOptions: (isEnabled) => ui.elements.timerOptionsDiv && (ui.elements.timerOptionsDiv.style.display = isEnabled ? 'block' : 'none'),
 
     toggleQuestionTypeOptions(type) {
         if (this.elements.optionsConfig) this.elements.optionsConfig.style.display = type === 'options' ? 'block' : 'none';
+        const isTextAnswer = ['short_text', 'long_text'].includes(type);
+        if (this.elements.textAnswerConfig) this.elements.textAnswerConfig.style.display = isTextAnswer ? 'block' : 'none';
         if (this.elements.textConfig) this.elements.textConfig.style.display = ['short_text', 'long_text'].includes(type) ? 'block' : 'none';
+
+        // Toggle skip logic sections
+        if (this.elements.skipConfigYesNo) {
+            this.elements.skipConfigYesNo.style.display = type === 'yes_no' ? 'block' : 'none';
+        }
+        if (this.elements.skipConfigMcqNumber) {
+            const isMcqOrNumber = ['options', 'number', 'integer'].includes(type);
+            this.elements.skipConfigMcqNumber.style.display = isMcqOrNumber ? 'block' : 'none';
+        }
+        if (this.elements.skipConfigText && isTextAnswer) { // Only show for text types
+            const isText = ['short_text', 'long_text'].includes(type);
+            this.elements.skipConfigText.style.display = isText ? 'block' : 'none';
+        }
     },
 
     renderQuestions(questions, socketHandler) {
@@ -326,42 +562,35 @@ const ui = {
         const validQuestions = questions.filter(q => q !== null);
         if (validQuestions.length === 0) {
             container.innerHTML = '<p>Nenhuma pergunta criada ainda.</p>';
+            this.renderHeaderRanking(previousUsers, 0); // Update header with 0 questions
             return;
         }
 
         // After rendering, always reset the create button state
         this.setCreateButtonState(false);
+        this.renderHeaderRanking(previousUsers, validQuestions.length); // Render header ranking
 
         validQuestions.forEach((q, index) => {
-            const isConcluded = q.isConcluded;
-            const isActive = q.id === ui.activeQuestionId;
-
-            let isWarning = false;
-            if (sessionDeadline && q.timer && q.timer.duration) {
-                if ((Date.now() + q.timer.duration * 1000) > sessionDeadline) isWarning = true;
-            }
-            
             const div = document.createElement('div');
-            div.className = `question-item ${isWarning ? 'warning' : ''}`;
+            div.className = `question-item`;
             div.id = `question-item-${q.id}`;
             div.innerHTML = `
                 <span class="drag-handle" title="Arraste para reordenar">↕️</span>
                 <div class="question-main">
-                    <p><strong>${q.text}</strong></p>
-                    <span class="vote-counter" id="vote-counter-${q.id}" title="Total de votos"></span>
+                    <p><strong>${index + 1}. ${q.text}</strong></p>
                 </div>
                 <div class="question-item-controls" id="question-controls-${q.id}"></div>
             `;
             container.appendChild(div);
-
-            // Atualiza a contagem de votos inicial
-            const totalVotes = Object.values(q.results || {}).reduce((sum, count) => sum + count, 0);
 
             const controlsDiv = div.querySelector(`#question-controls-${q.id}`);
 
             // Botão de Editar
             const editBtn = document.createElement('button');
             editBtn.innerHTML = '✏️ <span class="btn-text">Editar</span>';
+            editBtn.className = 'icon-button edit-btn';
+            editBtn.title = 'Editar Pergunta';
+            editBtn.onclick = () => this.enterEditMode(q);
 
             // Botão de Duplicar
             const duplicateBtn = document.createElement('button');
@@ -390,7 +619,32 @@ const ui = {
     renderUserList(users, totalQuestions, socketHandler) {
         const container = this.elements.audienceListContainer;
         if (!container) return;
+
+        // --- Lógica de Notificação Sonora ---
+        try {
+            // Filtra por usuários que acabaram de entrar no estado 'pending'
+            const newPendingUsers = Object.values(users).filter(user => 
+                user.status === 'pending' && 
+                (!previousUsers[user.socketId] || previousUsers[user.socketId].status !== 'pending')
+            );
+
+            // Toca o som se houver novos usuários pendentes e a aba estiver em foco
+            if (newPendingUsers.length > 0 && this.elements.notificationSound && document.hasFocus()) {
+                this.elements.notificationSound.currentTime = 0; // Reinicia o áudio
+                this.elements.notificationSound.play().catch(error => {
+                    console.warn("Não foi possível tocar o som de notificação:", error, "O navegador pode exigir uma interação do usuário primeiro.");
+                });
+            }
+        } catch (e) {
+            console.error("Erro na lógica de notificação sonora:", e);
+        } finally {
+            // Atualiza o estado anterior para a próxima comparação (cópia profunda para segurança)
+            previousUsers = JSON.parse(JSON.stringify(users));
+        }
+        // --- Fim da Lógica de Notificação ---
+
         container.innerHTML = '<h3>Participantes</h3>';
+        this.renderHeaderRanking(users, totalQuestions);
 
         const userArray = Object.values(users);
         if (userArray.length === 0) {
@@ -437,6 +691,17 @@ const ui = {
                 };
                 controls.appendChild(rejectBtn);
             } else { // approved or disconnected
+                const resetBtn = document.createElement('button');
+                resetBtn.innerText = 'Zerar';
+                resetBtn.className = 'secondary-button';
+                resetBtn.title = "Zerar progresso do participante";
+                resetBtn.onclick = () => {
+                    if (confirm(`Zerar o progresso de "${user.name}"? Ele voltará para a primeira pergunta.`)) {
+                        socketHandler.resetUserProgress(user.socketId);
+                    }
+                };
+                controls.appendChild(resetBtn);
+
                 const removeBtn = document.createElement('button');
                 removeBtn.innerText = 'Remover';
                 removeBtn.className = 'remove-btn';
@@ -452,14 +717,111 @@ const ui = {
         });
     },
 
+    renderHeaderRanking(users, totalQuestions) {
+        const container = this.elements.headerRankingContainer;
+        if (!container) return;
+        container.innerHTML = '';
+
+        const approvedUsers = Object.values(users).filter(u => u.status === 'approved' || u.status === 'disconnected');
+        if (totalQuestions === 0 || approvedUsers.length === 0) {
+            container.innerHTML = '<div class="header-ranking-bar"></div>'; // Show empty bar
+            return;
+        }
+
+        const sortedUsers = [...approvedUsers].sort((a, b) => b.progress - a.progress);
+        const track = document.createElement('div');
+        track.className = 'header-ranking-bar';
+
+        sortedUsers.forEach((user, index) => {
+            const percentage = (user.progress / totalQuestions) * 100;
+            const marker = document.createElement('div');
+            marker.className = 'header-ranking-marker';
+            marker.style.left = `${percentage}%`;
+            marker.title = `${user.name} (${user.progress}/${totalQuestions})`;
+
+            if (index === 0) marker.classList.add('rank-first');
+            if (index === sortedUsers.length - 1 && sortedUsers.length > 1) marker.classList.add('rank-last');
+            
+            track.appendChild(marker);
+        });
+
+        container.appendChild(track);
+    },
+
+    renderProgressModalContent() {
+        const container = this.elements.progressModalBody;
+        if (!container) return;
+
+        const users = previousUsers; // Use the last known user list
+        const totalQuestions = currentQuestions.length;
+        const approvedUsers = Object.values(users).filter(u => u.status === 'approved' || u.status === 'disconnected');
+        
+        const views = ['ranking-list', 'individual', 'overall', 'list'];
+        const currentView = views[this.progressModalViewIndex % views.length];
+
+        container.innerHTML = ''; // Clear previous content
+
+        switch(currentView) {
+            case 'ranking-list':
+                container.innerHTML = '<h3>Ranking Detalhado</h3>';
+                const sortedUsers = [...approvedUsers].sort((a, b) => b.progress - a.progress);
+                sortedUsers.forEach((user, index) => {
+                    const item = document.createElement('div');
+                    item.className = 'ranking-list-item';
+                    item.innerHTML = `<span><strong>${index + 1}º</strong> ${user.name}</span> <span>${user.progress}/${totalQuestions}</span>`;
+                    container.appendChild(item);
+                });
+                break;
+            
+            case 'individual':
+                container.innerHTML = '<h3>Progresso Individual</h3>';
+                const grid = document.createElement('div');
+                grid.className = 'individual-charts-grid';
+                approvedUsers.forEach(user => {
+                    const percentage = totalQuestions > 0 ? (user.progress / totalQuestions) * 100 : 0;
+                    const chartItem = document.createElement('div');
+                    chartItem.className = 'chart-item';
+                    chartItem.innerHTML = `
+                        <div class="chart-pie" style="--p: ${percentage}">
+                            <span class="chart-pie-label">${Math.round(percentage)}%</span>
+                        </div>
+                        <span class="user-name">${user.name}</span>
+                    `;
+                    grid.appendChild(chartItem);
+                });
+                container.appendChild(grid);
+                break;
+
+            case 'overall':
+                container.innerHTML = '<h3>Progresso Geral da Turma</h3>';
+                const totalProgress = approvedUsers.reduce((sum, user) => sum + user.progress, 0);
+                const maxProgress = approvedUsers.length * totalQuestions;
+                const averagePercentage = maxProgress > 0 ? (totalProgress / maxProgress) * 100 : 0;
+                container.innerHTML += `
+                    <div class="progress-track" style="height: 30px; max-width: 80%; margin: 1rem auto;">
+                        <div class="progress-fill" style="width: ${averagePercentage}%;"></div>
+                    </div>
+                    <p>Média de conclusão da turma: <strong>${Math.round(averagePercentage)}%</strong></p>
+                `;
+                break;
+
+            case 'list':
+                container.innerHTML = '<h3>Lista de Progresso</h3>';
+                approvedUsers.forEach(user => {
+                    const percentage = totalQuestions > 0 ? (user.progress / totalQuestions) * 100 : 0;
+                    const item = document.createElement('div');
+                    item.className = 'user-progress-bar';
+                    item.innerHTML = `<span class="user-name">${user.name}</span><div class="progress-track"><div class="progress-fill" style="width: ${percentage}%;"></div></div><span class="progress-label">${user.progress}/${totalQuestions}</span>`;
+                    container.appendChild(item);
+                });
+                break;
+        }
+    },
+
     saveQuestionsToFile() {
         const validQuestions = currentQuestions.filter(q => q !== null);
         if (validQuestions.length === 0) {
             alert('Não há perguntas para salvar.');
-            return;
-        }
-
-        if (!confirm("Atenção: O arquivo salvo incluirá as senhas de controller e presenter em texto claro, se disponíveis. Deseja continuar?")) {
             return;
         }
 
@@ -477,8 +839,6 @@ const ui = {
 
         const sessionSettings = {
             theme: this.elements.sessionThemeSwitcher.value,
-            controllerPassword: sessionStorage.getItem('eamos_session_pass') || '',
-            presenterPassword: sessionStorage.getItem('eamos_presenter_pass') || ''
         };
 
         const exportData = {
@@ -486,7 +846,8 @@ const ui = {
             questions: questionsToSave
         };
 
-        const sessionCode = this.elements.sessionCodeDisplay.innerText;        const filename = `eamos-session-${sessionCode}-${new Date().toISOString().slice(0, 10)}.json`;
+        const sessionCode = this.elements.sessionCodeDisplay.innerText;
+        const filename = `eamos-session-${sessionCode}-${new Date().toISOString().slice(0, 10)}.json`;
         const dataStr = JSON.stringify(exportData, null, 2);
         const dataBlob = new Blob([dataStr], { type: 'application/json' });
 
@@ -543,13 +904,37 @@ const ui = {
         // Preenche o formulário com os dados da pergunta original
         this.elements.questionTextInput.value = `${question.text} (Cópia)`;
         this.elements.imageUrlInput.value = question.imageUrl || '';
+        this.elements.mediaUrlInput.value = question.mediaUrl || '';
         this.elements.questionTypeSelect.value = question.questionType;
         this.toggleQuestionTypeOptions(question.questionType);
 
-        if (question.questionType === 'options' && question.options) {
-            this.elements.optionsTextInput.value = question.options.map(o => o.text).join(', ');
-        } else if (['short_text', 'long_text'].includes(question.questionType)) {
+        if (['short_text', 'long_text'].includes(question.questionType) && Array.isArray(question.correctAnswer)) {
+            this.elements.correctAnswerInput.value = question.correctAnswer[0] || '';
+            question.correctAnswer.slice(1).forEach(ans => this.addAnswerInput(ans));
+        }
+
+        if (question.questionType === 'options') {
+            question.options.forEach(opt => {
+                const isCorrect = question.correctAnswer.includes(opt.id);
+                this.addOptionInput(opt.text, isCorrect);
+            });
+            if (question.answerConfig) {
+                this.elements.mcqAcceptMultipleCheckbox.checked = question.answerConfig.acceptMultiple;
+                this.elements.mcqRequireAllLabel.style.display = question.answerConfig.acceptMultiple ? 'flex' : 'none';
+                this.elements.mcqRequireAllCheckbox.checked = question.answerConfig.requireAll;
+            }
+        }
+        
+        if (question.questionType === 'short_text') {
             this.elements.charLimitInput.value = question.charLimit || '';
+        }
+
+        // Preenche skip logic
+        if (question.skipConfig) {
+            this.elements.skipOnWrongCheckbox.checked = question.skipConfig.autoSkipOnWrong !== false; // default true
+            this.elements.autoSkipAttemptsMcqInput.value = question.skipConfig.autoSkipAfter || '';
+            this.elements.allowSkipAttemptsInput.value = question.skipConfig.allowSkipAfter || '';
+            this.elements.autoSkipAttemptsTextInput.value = question.skipConfig.autoSkipAfter || '';
         }
 
         if (question.timer) {
@@ -578,13 +963,37 @@ const ui = {
         // Preenche o formulário
         this.elements.questionTextInput.value = question.text;
         this.elements.imageUrlInput.value = question.imageUrl || '';
+        this.elements.mediaUrlInput.value = question.mediaUrl || '';
         this.elements.questionTypeSelect.value = question.questionType;
         this.toggleQuestionTypeOptions(question.questionType);
 
-        if (question.questionType === 'options' && question.options) {
-            this.elements.optionsTextInput.value = question.options.map(o => o.text).join(', ');
-        } else if (['short_text', 'long_text'].includes(question.questionType)) {
+        if (['short_text', 'long_text'].includes(question.questionType) && Array.isArray(question.correctAnswer)) {
+            this.elements.correctAnswerInput.value = question.correctAnswer[0] || '';
+            question.correctAnswer.slice(1).forEach(ans => this.addAnswerInput(ans));
+        }
+
+        if (question.questionType === 'options') {
+            question.options.forEach(opt => {
+                const isCorrect = question.correctAnswer.includes(opt.id);
+                this.addOptionInput(opt.text, isCorrect);
+            });
+            if (question.answerConfig) {
+                this.elements.mcqAcceptMultipleCheckbox.checked = question.answerConfig.acceptMultiple;
+                this.elements.mcqRequireAllLabel.style.display = question.answerConfig.acceptMultiple ? 'flex' : 'none';
+                this.elements.mcqRequireAllCheckbox.checked = question.answerConfig.requireAll;
+            }
+        }
+
+        if (question.questionType === 'short_text') {
             this.elements.charLimitInput.value = question.charLimit || '';
+        }
+
+        // Preenche skip logic
+        if (question.skipConfig) {
+            this.elements.skipOnWrongCheckbox.checked = question.skipConfig.autoSkipOnWrong !== false; // default true
+            this.elements.autoSkipAttemptsMcqInput.value = question.skipConfig.autoSkipAfter || '';
+            this.elements.allowSkipAttemptsInput.value = question.skipConfig.allowSkipAfter || '';
+            this.elements.autoSkipAttemptsTextInput.value = question.skipConfig.autoSkipAfter || '';
         }
 
         if (question.timer) {
@@ -661,6 +1070,12 @@ const ui = {
         } else {
             this.elements.toggleUrlBtn.innerText = 'Exibir Endereço';
         }
+        if (response.presenterMode) {
+            this.setPresenterModeControls(response.presenterMode);
+        }
+        if (response.audienceView) {
+            this.setAudienceViewControls(response.audienceView);
+        }
         if (sessionDeadline) this.showDeadlineWarning();
     },
 
@@ -681,7 +1096,10 @@ const ui = {
         toast.innerText = message;
         this.elements.toastContainer.appendChild(toast);
         setTimeout(() => toast.classList.add('show'), 10);
-        setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 500); }, 3000);
+        setTimeout(() => { 
+            toast.classList.remove('show'); 
+            toast.addEventListener('transitionend', () => toast.remove());
+        }, 3000);
     },
 
     handleThemeChanged(theme) {
@@ -723,6 +1141,11 @@ const socketHandler = {
         socket.on('userListUpdated', ({ users, totalQuestions }) => ui.renderUserList(users, totalQuestions, this));
         socket.on('sessionEnded', ({ message }) => ui.handleSessionEnded(message));
         socket.on('themeChanged', ({ theme }) => ui.handleThemeChanged(theme));
+        socket.on('controllerDisplaced', ({ message }) => {
+            alert(message || 'Outro controller se conectou a esta sessão. Você será desconectado.');
+            // O servidor forçará a desconexão, não é necessário redirecionar aqui.
+            // O evento 'disconnect' será acionado.
+        });
 
         socket.on('connect', () => {
             console.log('✅ Conectado ao servidor. Autenticando controller...');
@@ -760,6 +1183,14 @@ const socketHandler = {
         const sessionCode = new URLSearchParams(window.location.search).get('session');
         socket.emit('changeTheme', { sessionCode, theme });
     },
+    changePresenterMode: (mode, chartType, showRankPosition) => {
+        const sessionCode = new URLSearchParams(window.location.search).get('session');
+        socket.emit('changePresenterMode', { sessionCode, mode, chartType, showRankPosition });
+    },
+    changeAudienceView: (allowedViews) => {
+        const sessionCode = new URLSearchParams(window.location.search).get('session');
+        socket.emit('changeAudienceView', { sessionCode, allowedViews });
+    },
     deleteQuestion: (questionId) => {
         const sessionCode = new URLSearchParams(window.location.search).get('session');
         socket.emit('deleteQuestion', { sessionCode, questionId });
@@ -792,8 +1223,17 @@ const socketHandler = {
         const sessionCode = new URLSearchParams(window.location.search).get('session');
         socket.emit('removeUser', { sessionCode, userIdToRemove: userId });
     },
+    resetUserProgress: (userId) => {
+        const sessionCode = new URLSearchParams(window.location.search).get('session');
+        socket.emit('resetUserProgress', { sessionCode, userIdToReset: userId });
+    },
+    resetAllUsersProgress: () => {
+        const sessionCode = new URLSearchParams(window.location.search).get('session');
+        socket.emit('resetAllUsersProgress', { sessionCode });
+    },
 };
 
 // --- 4. INÍCIO DA APLICAÇÃO ---
 ui.init(socketHandler);
 socketHandler.init();
+ui.toggleQuestionTypeOptions(ui.elements.questionTypeSelect.value); // Initialize visibility

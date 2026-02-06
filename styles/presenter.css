@@ -13,14 +13,13 @@
     }
 }
 
-/*  gap: 1rem;
-}
-#audience-url-display { 
+/* Estilos para a área do QR Code */
+#audience-url-display {
     font-family: monospace; 
     font-size: 1.2rem; 
     color: var(--text-color); 
     opacity: 0.7; 
-    margin: 0; 
+    margin: 1rem 0 0 0;
     word-break: break-all; 
     cursor: pointer;
     transition: opacity 0.2s ease-in-out;
@@ -28,7 +27,6 @@
 }
 #audience-url-display:hover { opacity: 1; }
 
-/* Animação sutil para o QR Code */
 .qr-code-area #qrcode { animation: subtlePulse 4s ease-in-out infinite; }
 @keyframes subtlePulse {
     50% { transform: scale(1.02); }
@@ -37,19 +35,21 @@
 /* Estilos para a tela de progresso (EAMOS) */
 #progress-screen {
     width: 100%;
+    text-align: center;
     padding: 2rem;
 }
 
-#progress-bars-container {
+#progress-content-container {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
     width: 100%;
-    max-width: 800px;
+    max-width: 900px;
     margin: 2rem auto;
 }
 
-.user-progress-bar {
+/* --- Estilos para a visualização de LISTA --- */
+.user-progress-bar {    
     display: grid;
     grid-template-columns: 150px 1fr 50px;
     align-items: center;
@@ -69,4 +69,143 @@
     height: 100%;
     border-radius: 8px;
     transition: width 0.5s ease-in-out;
+}
+
+/* --- Estilos para a visualização de GRÁFICOS INDIVIDUAIS --- */
+.individual-charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 2rem;
+    justify-content: center;
+    width: 100%;
+}
+
+.chart-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.chart-item .user-name {
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.chart-pie {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    font-weight: bold;
+}
+
+.chart-pie::before {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    inset: 0;
+    background: conic-gradient(var(--primary-color) 0%, var(--primary-color) var(--p, 0%), #ddd var(--p, 0%), #ddd 100%);
+}
+
+.chart-pie-label {
+    position: relative; /* para ficar sobre o ::before */
+    z-index: 1;
+}
+
+/* --- Estilos para a visualização GERAL --- */
+.overall-chart-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.overall-chart-container .chart-pie {
+    width: 250px;
+    height: 250px;
+    font-size: 2.5rem;
+}
+
+.overall-chart-container .progress-track {
+    width: 100%;
+    max-width: 600px;
+    height: 40px;
+}
+
+/* --- Estilos para a visualização de RANKING --- */
+.ranking-container {
+    width: 100%;
+    padding: 2rem 0;
+}
+
+.ranking-bar-track {
+    position: relative;
+    width: 100%;
+    height: 15px;
+    background-color: #ddd;
+    border-radius: 10px;
+    margin-top: 2rem;
+}
+
+.ranking-marker {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 20px;
+    background-color: var(--primary-color);
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    transition: all 0.3s ease;
+    cursor: pointer;
+    z-index: 1;
+}
+
+.ranking-marker.rank-first {
+    background-color: #ffd700; /* Dourado */
+    transform: translate(-50%, -50%) scale(1.5);
+    z-index: 2;
+}
+
+.ranking-marker .ranking-position-label {
+    position: absolute;
+    bottom: -22px; /* Position below the marker */
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: var(--text-color);
+}
+.ranking-marker.rank-last {
+    background-color: #d9534f; /* Vermelho */
+}
+
+.ranking-marker .ranking-tooltip {
+    visibility: hidden;
+    width: max-content;
+    max-width: 200px;
+    background-color: #333;
+    color: #fff;
+    text-align: center;
+    border-radius: 6px;
+    padding: 5px 10px;
+    position: absolute;
+    z-index: 10;
+    bottom: 150%;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none; /* Evita que o tooltip interfira no hover do marcador */
+}
+
+.ranking-marker:hover .ranking-tooltip {
+    visibility: visible;
+    opacity: 1;
 }

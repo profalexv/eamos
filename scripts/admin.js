@@ -35,6 +35,8 @@ const backToIndexBtn = document.getElementById('back-to-index-btn');
 const createSessionBtn = document.getElementById('create-session-btn');
 const newControllerPassInput = document.getElementById('new-controller-pass');
 const newPresenterPassInput = document.getElementById('new-presenter-pass');
+const repeatControllerPassCheckbox = document.getElementById('repeat-controller-pass');
+const noPresenterPassCheckbox = document.getElementById('no-presenter-pass');
 const deadlineInput = document.getElementById('session-deadline');
 const sessionThemeInput = document.getElementById('session-theme');
 
@@ -120,6 +122,33 @@ backToIndexBtn.addEventListener('click', () => {
     window.location.href = '/index.html';
 });
 
+// Lógica para os checkboxes de senha do apresentador
+function handlePresenterPassCheckboxes() {
+    const presenterInputGroup = newPresenterPassInput.closest('.form-group');
+    if (!presenterInputGroup) return;
+
+    if (repeatControllerPassCheckbox.checked || noPresenterPassCheckbox.checked) {
+        newPresenterPassInput.disabled = true;
+        newPresenterPassInput.required = false;
+        presenterInputGroup.style.display = 'none';
+    } else {
+        newPresenterPassInput.disabled = false;
+        newPresenterPassInput.required = true;
+        presenterInputGroup.style.display = 'block';
+    }
+}
+
+repeatControllerPassCheckbox?.addEventListener('change', () => {
+    if (repeatControllerPassCheckbox.checked) noPresenterPassCheckbox.checked = false;
+    handlePresenterPassCheckboxes();
+});
+
+noPresenterPassCheckbox?.addEventListener('change', () => {
+    if (noPresenterPassCheckbox.checked) repeatControllerPassCheckbox.checked = false;
+    handlePresenterPassCheckboxes();
+});
+
+
 // Botões de "Voltar" dentro dos formulários
 backToMenuBtns.forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -131,26 +160,41 @@ backToMenuBtns.forEach(btn => {
 // Lógica de criação de sessão
 createSessionBtn?.addEventListener('click', () => {
     const controllerPassword = newControllerPassInput.value.trim();
-    const presenterPassword = newPresenterPassInput.value.trim();
+    const presenterPassword = newPresenterPassInput.value.trim(); // Pode estar vazio
+    const repeatControllerPass = repeatControllerPassCheckbox.checked;
+    const noPresenterPass = noPresenterPassCheckbox.checked;
     const theme = sessionThemeInput ? sessionThemeInput.value : 'light';
     const deadlineValue = deadlineInput.value;
     const deadline = deadlineValue ? new Date(new Date().toDateString() + ' ' + deadlineValue).getTime() : null;
 
     clearError();
 
-    if (!controllerPassword || !presenterPassword) {
-        showError('Por favor, preencha as senhas de Controller e Presenter.');
+    // Validação da senha do Controller
+    if (!controllerPassword) {
+        showError('A senha de Controller é obrigatória.');
         return;
     }
-    if (controllerPassword.length < 4 || presenterPassword.length < 4) {
-        showError('As senhas de Controller e Presenter devem ter pelo menos 4 caracteres.');
+    if (controllerPassword.length < 4) {
+        showError('A senha de Controller deve ter pelo menos 4 caracteres.');
         return;
+    }
+
+    // Validação da senha do Presenter (apenas se nenhuma caixa estiver marcada)
+    if (!repeatControllerPass && !noPresenterPass) {
+        if (!presenterPassword) {
+            showError('A senha de Presenter é obrigatória ou marque uma das opções.');
+            return;
+        }
+        if (presenterPassword.length < 4) {
+            showError('A senha de Presenter deve ter pelo menos 4 caracteres.');
+            return;
+        }
     }
 
     createSessionBtn.disabled = true;
     createSessionBtn.innerText = 'Criando...';
 
-    const payload = { controllerPassword, presenterPassword, deadline, theme };
+    const payload = { controllerPassword, presenterPassword, deadline, theme, repeatControllerPass, noPresenterPass };
 
     socket.emit('createSession', payload, (response) => {
         createSessionBtn.disabled = false;
@@ -159,7 +203,15 @@ createSessionBtn?.addEventListener('click', () => {
         if (response.success) {
             sessionStorage.setItem('eamos_session_code', response.sessionCode);
             sessionStorage.setItem('eamos_session_pass', controllerPassword);
-            sessionStorage.setItem('eamos_presenter_pass', presenterPassword);
+
+            // Define a senha correta do presenter para a próxima página
+            let presenterPassForStorage = '';
+            if (repeatControllerPass) {
+                presenterPassForStorage = controllerPassword;
+            } else if (!noPresenterPass) {
+                presenterPassForStorage = presenterPassword;
+            }
+            sessionStorage.setItem('eamos_presenter_pass', presenterPassForStorage);
 
             window.location.href = `/pages/controller.html?session=${response.sessionCode}`;
         } else {
@@ -175,8 +227,13 @@ joinSessionBtn?.addEventListener('click', () => {
 
     clearError();
 
-    if (!sessionCode || !password) {
-        showError('Código e senha são obrigatórios.');
+    if (!sessionCode) {
+        showError('O código da sessão é obrigatório.');
+        return;
+    }
+    // A senha pode ser vazia para presenters de sessões sem senha
+    if (role !== 'presenter' && !password) {
+        showError('A senha é obrigatória.');
         return;
     }
 
@@ -202,3 +259,6 @@ socket.on('connect_error', (error) => {
 socket.on('disconnect', (reason) => {
     console.warn('⚠️  Desconectado do servidor:', reason);
 });
+
+// Inicializa o estado dos checkboxes ao carregar a página
+document.addEventListener('DOMContentLoaded', handlePresenterPassCheckboxes);

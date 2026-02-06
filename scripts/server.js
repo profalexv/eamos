@@ -211,34 +211,53 @@ io.on('connection', (socket) => {
     registerQuestionHandlers(io, socket, sessions, logger);
 
     // 1. CRIAR UMA NOVA SESSÃO
-    socket.on('createSession', async ({ controllerPassword, presenterPassword, deadline, theme }, callback) => {
+    socket.on('createSession', async ({ controllerPassword, presenterPassword, deadline, theme, repeatControllerPass, noPresenterPass }, callback) => {
         try {
             // Rate limiting
             if (!checkRateLimit(clientIp)) {
                 logger.warn(`Rate limit atingido para IP: ${clientIp}`);
                 return callback({ success: false, message: 'Muitas tentativas. Aguarde um momento.' });
             }
-
+    
             // Validação básica
-            if (!controllerPassword || !presenterPassword) {
-                return callback({ success: false, message: 'As senhas de Controller e Presenter são obrigatórias.' });
+            if (!controllerPassword) {
+                return callback({ success: false, message: 'A senha de Controller é obrigatória.' });
             }
-
-            if (controllerPassword.length < 4 || presenterPassword.length < 4) {
+    
+            if (controllerPassword.length < 4) {
                 return callback({ 
                     success: false, 
-                    message: 'As senhas devem ter pelo menos 4 caracteres.' 
+                    message: 'A senha do Controller deve ter pelo menos 4 caracteres.' 
                 });
             }
-
+            // Valida a senha do presenter apenas se for obrigatória
+            if (!repeatControllerPass && !noPresenterPass) {
+                if (!presenterPassword) {
+                    return callback({ success: false, message: 'A senha de Presenter é obrigatória.' });
+                }
+                if (presenterPassword.length < 4) {
+                    return callback({ 
+                        success: false, 
+                        message: 'A senha do Presenter deve ter pelo menos 4 caracteres.' 
+                    });
+                }
+            }
+    
             // Hash de senhas (se habilitado)
             let hashController = controllerPassword;
-            let hashPresenter = presenterPassword;
+            let hashPresenter;
+
+            let finalPresenterPassword = presenterPassword;
+            if (repeatControllerPass) {
+                finalPresenterPassword = controllerPassword;
+            } else if (noPresenterPass) {
+                finalPresenterPassword = null; // Sinaliza que não há senha
+            }
             
             if (ENABLE_PASSWORD_HASHING && bcrypt) {
                 try {
                     hashController = await simpleHash.hash(controllerPassword);
-                    hashPresenter = await simpleHash.hash(presenterPassword);
+                    hashPresenter = finalPresenterPassword ? await simpleHash.hash(finalPresenterPassword) : null;
                 } catch (e) {
                     logger.error(`Erro ao fazer hash das senhas: ${e.message}`);
                 }
@@ -261,6 +280,8 @@ io.on('connection', (socket) => {
                 isHashed: ENABLE_PASSWORD_HASHING && bcrypt ? true : false,
                 isAudienceUrlVisible: false, // URL da plateia oculta por padrão
                 theme: theme || 'light', // Adiciona o tema à sessão
+                presenterMode: { mode: 'ranking', chartType: 'bar', showRankPosition: false }, // Padrão alterado para 'ranking'
+                audienceView: ['individual'], // Padrão de visualização para participantes
                 users: {} // Objeto para armazenar usuários da plateia
             };
 
@@ -288,13 +309,18 @@ io.on('connection', (socket) => {
 
             // Comparar senha (com ou sem hash)
             let passwordMatch = false;
-            if (session.isHashed && bcrypt) {
+            // Caso 1: Senha do apresentador não é necessária
+            if (role === 'presenter' && expectedPassword === null) {
+                passwordMatch = true;
+            }
+            // Caso 2: Senha com hash
+            else if (session.isHashed && bcrypt) {
                 try {
-                    passwordMatch = await simpleHash.compare(password, expectedPassword);
+                    passwordMatch = await simpleHash.compare(password || '', expectedPassword);
                 } catch (e) {
                     passwordMatch = false;
                 }
-            } else {
+            } else { // Caso 3: Senha sem hash
                 passwordMatch = password === expectedPassword;
             }
 
@@ -336,7 +362,9 @@ io.on('connection', (socket) => {
             callback({ success: true, deadline: session.deadline, theme: session.theme, 
                 users: session.users, 
                 totalQuestions: session.questions.length,
-                isAudienceUrlVisible: session.isAudienceUrlVisible 
+                isAudienceUrlVisible: session.isAudienceUrlVisible,
+                presenterMode: session.presenterMode,
+                audienceView: session.audienceView
             });
 
             // Enviar estado atual
@@ -347,6 +375,34 @@ io.on('connection', (socket) => {
         } catch (err) {
             logger.error(`Erro ao entrar em sessão: ${err.message}`);
             callback({ success: false, message: 'Erro ao conectar. Tente novamente.' });
+        }
+    });
+
+    // MUDAR O MODO DE EXIBIÇÃO DO PARTICIPANTE (AUDIENCE)
+    socket.on('changeAudienceView', ({ sessionCode, allowedViews }) => {
+        const session = sessions[sessionCode];
+        if (session && socket.role === 'controller') {
+            session.audienceView = allowedViews;
+            logAction(sessionCode, `Visibilidade de progresso da plateia alterada para: [${allowedViews.join(', ')}]`);
+            // Notifica todos na sala, a plateia vai usar isso
+            io.to(sessionCode).emit('audienceViewChanged', { 
+                allowedViews: session.audienceView 
+            });
+        }
+    });
+
+    // MUDAR O MODO DE EXIBIÇÃO DO PRESENTER
+    socket.on('changePresenterMode', ({ sessionCode, mode, chartType, showRankPosition }) => {
+        const session = sessions[sessionCode];
+        if (session && socket.role === 'controller') {
+            session.presenterMode = { mode, chartType, showRankPosition };
+            logAction(sessionCode, `Modo do Presenter alterado para: ${mode} (${chartType || 'N/A'})`);
+            // Notifica todos na sala (presenters, outros controllers)
+            io.to(sessionCode).emit('presenterModeChanged', { 
+                presenterMode: session.presenterMode,
+                users: session.users,
+                totalQuestions: session.questions.length
+            });
         }
     });
 
@@ -400,7 +456,10 @@ io.on('connection', (socket) => {
             }
 
             // Reconexão bem-sucedida: atualiza o socket ID do usuário
-            const userData = { ...existingUser, socketId: socket.id };
+            // Se o usuário estava desconectado, seu status deve voltar para 'approved'.
+            // Se ele estava pendente e desconectou (improvável), ele continua pendente.
+            const newStatus = existingUser.status === 'disconnected' ? 'approved' : existingUser.status;
+            const userData = { ...existingUser, socketId: socket.id, status: newStatus };
             delete session.users[oldSocketId];
             session.users[socket.id] = userData;
             
@@ -409,15 +468,15 @@ io.on('connection', (socket) => {
             socket.join(sessionCode);
 
             logAction(sessionCode, `RECONEXÃO de '${trimmedName}'`);
-            io.to(session.controllerSocketId).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
-            io.to(session.presenterSocketIds).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
+            io.to(sessionCode).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
 
-            if (existingUser.status === 'approved') {
+            if (userData.status === 'approved') {
                 const currentQuestion = session.questions[existingUser.progress] || null;
                 // Notifica o cliente que a reconexão foi bem-sucedida e envia o estado atual
                 socket.emit('joinApproved', {
                     firstQuestion: currentQuestion,
-                    totalQuestions: session.questions.length
+                    totalQuestions: session.questions.length,
+                    audienceView: session.audienceView
                 });
                 return callback({ success: true, message: 'Reconectado com sucesso! Carregando seu progresso...' });
 
@@ -437,6 +496,7 @@ io.on('connection', (socket) => {
             password: hashedPassword, // Armazena a senha do usuário
             status: 'pending',
             progress: 0,
+            currentQuestionAttempts: 0,
             socketId: socket.id
         };
         
@@ -461,17 +521,16 @@ io.on('connection', (socket) => {
             user.status = 'approved';
             logAction(sessionCode, `Usuário '${user.name}' APROVADO`);
 
-            // Notifica o controller para atualizar a UI
-            io.to(session.controllerSocketId).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
-            // Notifica o presenter para atualizar a UI de progresso
-            io.to(session.presenterSocketIds).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
+            // Notifica todos na sala (controller, presenter, audience) sobre a atualização
+            io.to(sessionCode).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
 
             // Notifica o usuário aprovado para que ele possa começar a responder
             const userSocket = io.sockets.sockets.get(userIdToApprove);
             if (userSocket) {
                 userSocket.emit('joinApproved', {
                     firstQuestion: session.questions.length > 0 ? session.questions[0] : null,
-                    totalQuestions: session.questions.length
+                    totalQuestions: session.questions.length,
+                    audienceView: session.audienceView
                 });
             }
         }
@@ -495,8 +554,7 @@ io.on('connection', (socket) => {
                 delete session.users[userIdToReject];
 
                 // Notifica controller e presenter para atualizar as listas
-                io.to(session.controllerSocketId).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
-                io.to(session.presenterSocketIds).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
+                io.to(sessionCode).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
             }
         }
     });
@@ -515,8 +573,59 @@ io.on('connection', (socket) => {
             }
 
             delete session.users[userIdToRemove];
-            io.to(session.controllerSocketId).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
-            io.to(session.presenterSocketIds).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
+            io.to(sessionCode).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
+        }
+    });
+
+    // 7. ZERAR PROGRESSO DE PARTICIPANTE (EAMOS)
+    socket.on('resetUserProgress', ({ sessionCode, userIdToReset }) => {
+        const session = sessions[sessionCode];
+        if (session && socket.role === 'controller' && session.users[userIdToReset]) {
+            const user = session.users[userIdToReset];
+            user.progress = 0;
+            user.currentQuestionAttempts = 0;
+            logAction(sessionCode, `Progresso do usuário '${user.name}' ZERADO`);
+
+            // Notifica todos sobre a atualização da lista (para o progresso visual)
+            io.to(sessionCode).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
+
+            // Notifica o usuário específico para que ele volte à primeira pergunta
+            const userSocket = io.sockets.sockets.get(userIdToReset);
+            if (userSocket) {
+                userSocket.emit('joinApproved', { // Reutilizando o evento que inicia o quiz
+                    firstQuestion: session.questions.length > 0 ? session.questions[0] : null,
+                    totalQuestions: session.questions.length,
+                    audienceView: session.audienceView
+                });
+            }
+        }
+    });
+
+    // 8. ZERAR PROGRESSO DE TODOS OS PARTICIPANTES
+    socket.on('resetAllUsersProgress', ({ sessionCode }) => {
+        const session = sessions[sessionCode];
+        if (session && socket.role === 'controller') {
+            logAction(sessionCode, `Progresso de TODOS os usuários ZERADO`);
+
+            const firstQuestion = session.questions.length > 0 ? session.questions[0] : null;
+
+            for (const userId in session.users) {
+                const user = session.users[userId];
+                user.progress = 0;
+                user.currentQuestionAttempts = 0;
+
+                // Notifica o usuário específico para que ele volte à primeira pergunta
+                const userSocket = io.sockets.sockets.get(userId);
+                if (userSocket) {
+                    userSocket.emit('joinApproved', { // Reutilizando o evento que inicia o quiz
+                        firstQuestion: firstQuestion,
+                        totalQuestions: session.questions.length,
+                        audienceView: session.audienceView
+                    });
+                }
+            }
+            // Notifica todos sobre a atualização da lista (para o progresso visual)
+            io.to(sessionCode).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
         }
     });
 
@@ -550,6 +659,7 @@ io.on('connection', (socket) => {
         
         const question = expectedQuestion;
         let isCorrect = false;
+        let autoSkipped = false;
 
         // Lógica de pular
         if (answer === '__SKIP__') {
@@ -561,21 +671,62 @@ io.on('connection', (socket) => {
             }
         } else {
             // Lógica de verificação da resposta
-            // A resposta correta pode ser um array ou um valor único.
-            const correctAnswers = Array.isArray(question.correctAnswer) ? question.correctAnswer : [question.correctAnswer];
-            isCorrect = correctAnswers.includes(answer);
+            if (question.correctAnswer && question.correctAnswer.length > 0) {
+                const correctAnswers = question.correctAnswer;
+
+                if (question.questionType === 'options') {
+                    const submittedAnswers = Array.isArray(answer) ? answer : [answer];
+                    const config = question.answerConfig || {};
+
+                    if (config.acceptMultiple && config.requireAll) {
+                        // Requer todas as corretas e apenas as corretas
+                        isCorrect = submittedAnswers.length === correctAnswers.length && submittedAnswers.every(id => correctAnswers.includes(id));
+                    } else if (config.acceptMultiple && !config.requireAll) {
+                        // Requer pelo menos uma correta e nenhuma incorreta
+                        const hasCorrect = submittedAnswers.some(id => correctAnswers.includes(id));
+                        const hasIncorrect = submittedAnswers.some(id => !correctAnswers.includes(id));
+                        isCorrect = hasCorrect && !hasIncorrect;
+                    } else {
+                        // Modo de resposta única
+                        isCorrect = correctAnswers.length === 1 && submittedAnswers.length === 1 && correctAnswers[0] === submittedAnswers[0];
+                    }
+                } else if (['short_text', 'long_text', 'number'].includes(question.questionType)) {
+                    // Checagem sem diferenciar maiúsculas/minúsculas para texto
+                    isCorrect = correctAnswers.some(correct => correct.toLowerCase() === String(answer).toLowerCase());
+                } else { // Para yes_no, integer, a resposta é exata
+                    isCorrect = correctAnswers.includes(answer);
+                }
+            } else {
+                // If no correct answer is defined, any answer is "correct" for progression in EAMOS
+                isCorrect = true;
+            }
+        }
+
+        if (!isCorrect) {
+            user.currentQuestionAttempts = (user.currentQuestionAttempts || 0) + 1;
+            
+            const skipConfig = question.skipConfig || {};
+            if (skipConfig.autoSkipOnWrong && question.questionType === 'yes_no') {
+                isCorrect = true;
+                autoSkipped = true;
+                logAction(sessionCode, `Usuário '${user.name}' pulou automaticamente (erro em Sim/Não)`);
+            } else if (skipConfig.autoSkipAfter && user.currentQuestionAttempts >= skipConfig.autoSkipAfter) {
+                isCorrect = true;
+                autoSkipped = true;
+                logAction(sessionCode, `Usuário '${user.name}' pulou automaticamente após ${user.currentQuestionAttempts} tentativas`);
+            }
         }
 
         if (isCorrect) {
             user.progress++;
+            user.currentQuestionAttempts = 0; // Reset attempts on success or skip
             const nextQuestion = user.progress < session.questions.length ? session.questions[user.progress] : null;
             
             // Envia o resultado e a próxima pergunta para o usuário
             socket.emit('answerResult', { correct: true, nextQuestion });
 
             // Notifica controller e presenter sobre a atualização de progresso
-            io.to(session.controllerSocketId).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
-            io.to(session.presenterSocketIds).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
+            io.to(sessionCode).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
             logAction(sessionCode, `Progresso de '${user.name}' atualizado para ${user.progress}`);
         } else {
             // Envia o resultado incorreto para o usuário
@@ -608,8 +759,7 @@ io.on('connection', (socket) => {
                     const user = userEntry[1];
                     logAction(sessionCode, `Participante '${user.name}' desconectado (socket: ${socket.id})`);
                     user.status = 'disconnected'; // Adiciona um status para a UI
-                    io.to(session.controllerSocketId).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
-                    io.to(session.presenterSocketIds).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
+                    io.to(sessionCode).emit('userListUpdated', { users: session.users, totalQuestions: session.questions.length });
                 }
             }
         }

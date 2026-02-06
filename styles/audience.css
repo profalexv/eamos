@@ -1,0 +1,191 @@
+/* /styles/audience.css */
+
+/* --- Estilos para a tela de Quiz do Participante --- */
+
+#quiz-screen {
+    width: 100%;
+    max-width: 800px;
+}
+
+#question-title {
+    font-size: 1.8rem;
+    margin-bottom: 2rem;
+}
+
+#options-container {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+/* Em telas maiores, botões lado a lado */
+@media (min-width: 600px) {
+    #options-container {
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
+}
+
+#options-container button {
+    width: 100%;
+    padding: 1rem;
+    font-size: 1.2rem;
+}
+
+#answer-feedback {
+    margin-top: 1.5rem;
+    font-weight: bold;
+    min-height: 1.5em;
+}
+
+/* --- Estilos para Opções de Múltipla Escolha --- */
+.mcq-option-label {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background-color: var(--background-color-alt);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.mcq-option-label:hover { background-color: color-mix(in srgb, var(--primary-color) 15%, transparent); }
+.mcq-option-label input[type="checkbox"] { width: 1.5em; height: 1.5em; margin: 0; }
+.mcq-option-label span { flex-grow: 1; text-align: left; }
+
+/* --- Estilos para Fim de Jogo --- */
+#game-over-screen h2 {
+    margin-top: 2rem;
+    color: var(--primary-color);
+}
+
+#game-over-screen p {
+    font-size: 1.2rem;
+}
+
+#game-over-screen strong {
+    font-size: 1.5rem;
+}
+/* --- Estilos para Mídia --- */
+.video-container {
+    position: relative;
+    padding-bottom: 56.25%; /* 16:9 aspect ratio */
+    height: 0;
+    overflow: hidden;
+    max-width: 100%;
+    background: #000;
+    margin-bottom: 1rem;
+    border-radius: 8px;
+}
+.video-container iframe {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+}
+/* --- Estilos para o View Switcher --- */
+
+#view-switcher {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: var(--primary-color);
+    color: var(--button-text-color);
+    padding: 10px 15px;
+    border-radius: 25px;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    z-index: 1000;
+    transition: transform 0.2s ease-in-out, background-color 0.2s;
+    user-select: none;
+    display: flex; /* Para centralizar o texto se necessário */
+    align-items: center;
+    justify-content: center;
+}
+#view-switcher:hover {
+    transform: scale(1.05);
+    background-color: var(--secondary-color);
+}
+
+/* --- Estilos para as Visualizações de Progresso (copiado/adaptado de presenter.css) --- */
+
+#audience-progress-container {
+    padding: 20px;
+    text-align: center;
+}
+
+.user-progress-bar {    
+    display: grid;
+    align-items: center;
+    gap: 1rem;
+    font-size: 1.2rem;
+}
+
+.progress-track {
+    background-color: rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    height: 25px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    background-color: var(--primary-color);
+    height: 100%;
+    border-radius: 8px;
+    transition: width 0.5s ease-in-out;
+}
+
+.ranking-container {
+    width: 100%;
+    padding: 2rem 0;
+}
+
+.ranking-bar-track {
+    position: relative;
+    width: 100%;
+    height: 15px;
+    background-color: #ddd;
+    border-radius: 10px;
+    margin-top: 2rem;
+}
+
+.ranking-marker {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 20px;
+    background-color: var(--primary-color);
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    transition: all 0.3s ease;
+    cursor: pointer;
+    z-index: 1;
+}
+
+.ranking-marker.rank-first { background-color: #ffd700; transform: translate(-50%, -50%) scale(1.5); z-index: 2; }
+.ranking-marker.rank-last { background-color: #d9534f; }
+.ranking-marker.me { background-color: var(--secondary-color); transform: translate(-50%, -50%) scale(1.6); z-index: 3; }
+
+.ranking-marker .ranking-tooltip {
+    visibility: hidden;
+    width: max-content;
+    background-color: #333;
+    color: #fff;
+    text-align: center;
+    border-radius: 6px;
+    padding: 5px 10px;
+    position: absolute;
+    z-index: 10;
+    bottom: 150%;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+}
+
+.ranking-marker:hover .ranking-tooltip {
+    visibility: visible;
+    opacity: 1;
+}
