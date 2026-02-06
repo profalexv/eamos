@@ -34,7 +34,6 @@ const backToIndexBtn = document.getElementById('back-to-index-btn');
 // Formulário de Nova Sessão
 const createSessionBtn = document.getElementById('create-session-btn');
 const newControllerPassInput = document.getElementById('new-controller-pass');
-const newAudiencePassInput = document.getElementById('new-audience-pass');
 const newPresenterPassInput = document.getElementById('new-presenter-pass');
 const deadlineInput = document.getElementById('session-deadline');
 const sessionThemeInput = document.getElementById('session-theme');
@@ -133,26 +132,25 @@ backToMenuBtns.forEach(btn => {
 createSessionBtn?.addEventListener('click', () => {
     const controllerPassword = newControllerPassInput.value.trim();
     const presenterPassword = newPresenterPassInput.value.trim();
-    const audiencePassword = newAudiencePassInput.value.trim();
     const theme = sessionThemeInput ? sessionThemeInput.value : 'light';
     const deadlineValue = deadlineInput.value;
     const deadline = deadlineValue ? new Date(new Date().toDateString() + ' ' + deadlineValue).getTime() : null;
 
     clearError();
 
-    if (!controllerPassword || !presenterPassword || !audiencePassword) {
-        showError('Por favor, preencha todas as senhas (Controller, Participante e Presenter).');
+    if (!controllerPassword || !presenterPassword) {
+        showError('Por favor, preencha as senhas de Controller e Presenter.');
         return;
     }
-    if (controllerPassword.length < 4 || presenterPassword.length < 4 || audiencePassword.length < 4) {
-        showError('Todas as senhas devem ter pelo menos 4 caracteres.');
+    if (controllerPassword.length < 4 || presenterPassword.length < 4) {
+        showError('As senhas de Controller e Presenter devem ter pelo menos 4 caracteres.');
         return;
     }
 
     createSessionBtn.disabled = true;
     createSessionBtn.innerText = 'Criando...';
 
-    const payload = { controllerPassword, presenterPassword, audiencePassword, deadline, theme };
+    const payload = { controllerPassword, presenterPassword, deadline, theme };
 
     socket.emit('createSession', payload, (response) => {
         createSessionBtn.disabled = false;

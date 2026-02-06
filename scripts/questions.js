@@ -16,8 +16,12 @@ function registerQuestionHandlers(io, socket, sessions, logger) {
         const session = sessions[sessionCode];
         if (!session) return;
 
+        // Garante que cada pergunta tenha um ID único e estável, não baseado no índice.
+        const newQuestionId = (session.nextQuestionId || session.questions.length);
+        session.nextQuestionId = newQuestionId + 1;
+
         session.questions.push({
-            id: session.questions.length,
+            id: newQuestionId,
             text: question.text,
             imageUrl: question.imageUrl,
             questionType: question.questionType,
@@ -30,7 +34,7 @@ function registerQuestionHandlers(io, socket, sessions, logger) {
             createdAt: Date.now()
         });
 
-        logAction(sessionCode, `PERGUNTA #${session.questions.length - 1} criada`);
+        logAction(sessionCode, `PERGUNTA #${newQuestionId} criada`);
         io.to(sessionCode).emit('questionsUpdated', session.questions);
         if (callback) callback({ success: true });
     });
@@ -38,10 +42,13 @@ function registerQuestionHandlers(io, socket, sessions, logger) {
     // EDITAR UMA PERGUNTA
     socket.on('editQuestion', ({ sessionCode, questionId, updatedQuestion }, callback) => {
         const session = sessions[sessionCode];
-        if (!session || !session.questions[questionId]) return;
+        if (!session) return;
 
-        const question = session.questions[questionId];
-        
+        const questionIndex = session.questions.findIndex(q => q && q.id === questionId);
+        if (questionIndex === -1) return;
+
+        const question = session.questions[questionIndex];
+
         // No modelo EAMOS, a edição pode ser mais flexível, mas ainda é prudente
         // não editar perguntas enquanto usuários podem estar respondendo.
         // Por simplicidade, vamos permitir a edição a qualquer momento.
@@ -62,23 +69,18 @@ function registerQuestionHandlers(io, socket, sessions, logger) {
     // DELETAR UMA PERGUNTA
     socket.on('deleteQuestion', ({ sessionCode, questionId }) => {
         const session = sessions[sessionCode];
-        if (!session || !session.questions[questionId]) return;
+        if (!session) return;
 
-        if (session.activeQuestion === questionId) {
-            socket.emit('error', 'Não pode deletar pergunta ativa');
-            return;
+        const initialLength = session.questions.length;
+        // Filtra a pergunta pelo seu ID único, em vez de depender do índice.
+        session.questions = session.questions.filter(q => q && q.id !== questionId);
+
+        if (session.questions.length < initialLength) {
+            logAction(sessionCode, `PERGUNTA #${questionId} deletada`);
+            // A reordenação no cliente já lida com a atualização da UI.
+            // Apenas emitimos a lista atualizada.
+            io.to(sessionCode).emit('questionsUpdated', session.questions);
         }
-
-        // Em vez de setar para null, remove do array
-        session.questions.splice(questionId, 1);
-
-        // Re-indexa as perguntas subsequentes
-        for (let i = questionId; i < session.questions.length; i++) {
-            session.questions[i].id = i;
-        }
-
-        logAction(sessionCode, `PERGUNTA #${questionId} deletada`);
-        io.to(sessionCode).emit('questionsUpdated', session.questions);
     });
 
     // Os eventos 'startQuestion', 'stopQuestion', 'showResults', 'duplicateQuestion'

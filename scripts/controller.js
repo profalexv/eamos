@@ -14,7 +14,7 @@ const socket = io(getBackendUrl(), {
     reconnectionAttempts: 5
 });
 let sessionDeadline = null;
-let currentQuestions = []; // Armazena a lista de perguntas atual
+let currentQuestions = []; // Armazena a lista de perguntas da sessão
 
 /**
  * Aplica um tema visual ao body, trocando a classe de tema.
@@ -32,7 +32,6 @@ function applyTheme(theme = 'light') {
 // Gerencia todas as interações com o DOM e os event listeners.
 const ui = {
     editingQuestionId: null, // To track which question is being edited
-    activeQuestionId: null, // To track which question is currently active
     sortableInstance: null,
     elements: {
         sessionCodeDisplay: document.getElementById('session-code'),
@@ -52,6 +51,7 @@ const ui = {
         loadQuestionsInput: document.getElementById('load-questions-input'),
         sessionThemeSwitcher: document.getElementById('session-theme-switcher'),
         audienceCounter: document.getElementById('audience-counter'),
+        audienceListContainer: document.getElementById('audience-list-container'),
         toastContainer: document.getElementById('toast-container'),
         formColumn: document.querySelector('.form-column'),
         presenterPreviewBox: document.getElementById('presenter-preview-box'),
@@ -174,19 +174,8 @@ const ui = {
                 const [movedItem] = currentQuestions.splice(evt.oldIndex, 1);
                 currentQuestions.splice(evt.newIndex, 0, movedItem);
 
-                const activeQuestionIndex = currentQuestions.findIndex(q => q && q.id === ui.activeQuestionId);
-
-                // Se uma pergunta concluída for movida para depois da ativa (ou se não houver ativa),
-                // ela é reativada, limpando seus resultados.
-                if (movedItem.isConcluded && (activeQuestionIndex === -1 || evt.newIndex > activeQuestionIndex)) {
-                    movedItem.isConcluded = false;
-                    movedItem.results = {};
-                }
-
                 socketHandler.reorderQuestions(currentQuestions);
             },
-            // Previne o movimento da pergunta ativa
-            onMove: (evt) => !evt.dragged.classList.contains('active'),
         });
     },
 
@@ -367,28 +356,12 @@ const ui = {
 
             // Atualiza a contagem de votos inicial
             const totalVotes = Object.values(q.results || {}).reduce((sum, count) => sum + count, 0);
-            const counterEl = div.querySelector(`#vote-counter-${q.id}`);
-            if (counterEl) {
-                if (totalVotes > 0) {
-                    counterEl.innerText = `🗳️ ${totalVotes}`;
-                    counterEl.style.display = 'inline-block';
-                } else {
-                    counterEl.style.display = 'none';
-                }
-            }
 
             const controlsDiv = div.querySelector(`#question-controls-${q.id}`);
 
             // Botão de Editar
             const editBtn = document.createElement('button');
             editBtn.innerHTML = '✏️ <span class="btn-text">Editar</span>';
-            editBtn.className = 'icon-button edit-btn';
-            editBtn.title = 'Editar Pergunta';
-            editBtn.onclick = () => this.enterEditMode(q);
-            if (isConcluded || isActive) {
-                editBtn.disabled = true;
-                editBtn.title = 'Não é possível editar uma pergunta ativa ou já encerrada.';
-            }
 
             // Botão de Duplicar
             const duplicateBtn = document.createElement('button');
@@ -408,76 +381,74 @@ const ui = {
                 }
             };
 
-            // Botão de Iniciar
-            const startBtn = document.createElement('button');
-            startBtn.innerText = isConcluded ? 'Re-abrir Votação' : 'Iniciar Pergunta';
-            startBtn.className = 'start-btn';
-            startBtn.onclick = () => socketHandler.startQuestion(q.id);
-
-            // Botão de Parar
-            const stopBtn = document.createElement('button');
-            stopBtn.innerText = 'Parar Respostas';
-            stopBtn.className = 'stop-btn';
-            stopBtn.style.backgroundColor = '#f0ad4e';
-            stopBtn.style.display = 'none'; // Oculto por padrão
-            stopBtn.onclick = () => socketHandler.stopVoting(q.id);
-
-            // Botão para Exibir Resultados (se concluída)
-            let showResultsBtn = null;
-            if (isConcluded) {
-                showResultsBtn = document.createElement('button');
-                showResultsBtn.innerText = 'Exibir Resultados';
-                showResultsBtn.className = 'show-results-btn';
-                showResultsBtn.style.backgroundColor = '#16a085';
-                showResultsBtn.onclick = () => socketHandler.showResults(q.id);
-            }
-
             controlsDiv.appendChild(editBtn);
             controlsDiv.appendChild(duplicateBtn);
             controlsDiv.appendChild(deleteBtn);
-            if (showResultsBtn) {
-                controlsDiv.appendChild(showResultsBtn);
-
-                const exportCsvBtn = document.createElement('button');
-                exportCsvBtn.innerHTML = '📊 <span class="btn-text">Exportar</span>';
-                exportCsvBtn.className = 'icon-button export-csv-btn';
-                exportCsvBtn.title = 'Exportar Resultados para CSV';
-                exportCsvBtn.onclick = () => this.exportQuestionResultsToCSV(q);
-                controlsDiv.appendChild(exportCsvBtn);
-            }
-            controlsDiv.appendChild(startBtn);
-            controlsDiv.appendChild(stopBtn);
         });
     },
 
-    setActiveQuestion(question, socketHandler) {
-        const questionId = question.id;
-        this.activeQuestionId = questionId; // Armazena o ID da pergunta ativa
-        document.querySelectorAll('.question-item').forEach(item => {
-            const isThisActive = item.id === `question-item-${questionId}`;
-            item.classList.toggle('active', isThisActive);
+    renderUserList(users, totalQuestions, socketHandler) {
+        const container = this.elements.audienceListContainer;
+        if (!container) return;
+        container.innerHTML = '<h3>Participantes</h3>';
 
-            const startBtn = item.querySelector('.start-btn');
-            const stopBtn = item.querySelector('.stop-btn');
-            const deleteBtn = item.querySelector('.delete-btn');
-            const showResultsBtn = item.querySelector('.show-results-btn');
+        const userArray = Object.values(users);
+        if (userArray.length === 0) {
+            container.innerHTML += '<p>Nenhum participante conectado.</p>';
+            return;
+        }
 
-            if (isThisActive) {
-                // This is the active question: hide most action buttons
-                if (startBtn) startBtn.style.display = 'none';
-                if (deleteBtn) deleteBtn.style.display = 'none';
-                if (showResultsBtn) showResultsBtn.style.display = 'none';
-                
-                // Only show the 'Stop' button if voting is actually open
-                if (stopBtn) {
-                    stopBtn.style.display = question.acceptingAnswers ? 'inline-block' : 'none';
-                }
-            } else {
-                // This is not an active question: restore default visibility
-                if (startBtn) startBtn.style.display = 'inline-block';
-                if (deleteBtn) deleteBtn.style.display = 'inline-block';
-                if (stopBtn) stopBtn.style.display = 'none';
+        userArray.sort((a, b) => a.name.localeCompare(b.name)).forEach(user => {
+            const userDiv = document.createElement('div');
+            userDiv.className = `user-item status-${user.status}`;
+            userDiv.id = `user-item-${user.socketId}`;
+
+            let statusText = '';
+            switch (user.status) {
+                case 'pending': statusText = ' (Aguardando aprovação)'; break;
+                case 'disconnected': statusText = ' (Desconectado)'; break;
+                case 'approved': statusText = ` (${user.progress}/${totalQuestions})`; break;
             }
+
+            userDiv.innerHTML = `
+                <div class="user-info">
+                    <span class="user-name">${user.name}</span>
+                    <span class="user-status">${statusText}</span>
+                </div>
+                <div class="user-controls"></div>
+            `;
+
+            const controls = userDiv.querySelector('.user-controls');
+
+            if (user.status === 'pending') {
+                const approveBtn = document.createElement('button');
+                approveBtn.innerText = 'Aprovar';
+                approveBtn.className = 'approve-btn';
+                approveBtn.onclick = () => socketHandler.approveUser(user.socketId);
+                controls.appendChild(approveBtn);
+
+                const rejectBtn = document.createElement('button');
+                rejectBtn.innerText = 'Rejeitar';
+                rejectBtn.className = 'reject-btn';
+                rejectBtn.onclick = () => {
+                    if (confirm(`Rejeitar a entrada de "${user.name}"?`)) {
+                        socketHandler.rejectUser(user.socketId);
+                    }
+                };
+                controls.appendChild(rejectBtn);
+            } else { // approved or disconnected
+                const removeBtn = document.createElement('button');
+                removeBtn.innerText = 'Remover';
+                removeBtn.className = 'remove-btn';
+                removeBtn.onclick = () => {
+                    if (confirm(`Remover "${user.name}" da sessão? Seu progresso será perdido.`)) {
+                        socketHandler.removeUser(user.socketId);
+                    }
+                };
+                controls.appendChild(removeBtn);
+            }
+
+            container.appendChild(userDiv);
         });
     },
 
@@ -680,16 +651,10 @@ const ui = {
             window.location.href = `/pages/admin.html?role=controller`;
             return;
         }
+        if (response.users) {
+            this.renderUserList(response.users, response.totalQuestions, socketHandler);
+        }
         sessionDeadline = response.deadline;
-        if (response.audienceCount !== undefined) {
-            this.updateAudienceCount(response.audienceCount);
-        }
-        if (response.activeQuestion !== null) {
-            // FIX: Don't call setActiveQuestion with an ID, which causes an error.
-            // Just store the ID. The UI will be correctly updated by the 
-            // 'newQuestion' event that follows shortly after joining.
-            this.activeQuestionId = response.activeQuestion;
-        }
         // Atualiza o texto do botão com base no estado recebido do servidor
         if (response.isAudienceUrlVisible) {
             this.elements.toggleUrlBtn.innerText = 'Ocultar Endereço';
@@ -697,21 +662,6 @@ const ui = {
             this.elements.toggleUrlBtn.innerText = 'Exibir Endereço';
         }
         if (sessionDeadline) this.showDeadlineWarning();
-    },
-
-    updateVoteCount(questionId, results) {
-        const counterEl = document.getElementById(`vote-counter-${questionId}`);
-        if (!counterEl) return;
-
-        const totalVotes = Object.values(results).reduce((sum, count) => sum + count, 0);
-
-        if (totalVotes > 0) {
-            counterEl.innerText = `🗳️ ${totalVotes}`;
-            counterEl.style.display = 'inline-block';
-        } else {
-            // Se os votos forem zerados (ex: reabrir votação), esconde o contador
-            counterEl.style.display = 'none';
-        }
     },
 
     updateAudienceCount(count, joined = null) {
@@ -770,11 +720,9 @@ const ui = {
 const socketHandler = {
     init() {
         socket.on('questionsUpdated', (questions) => ui.renderQuestions(questions, this));
-        socket.on('newQuestion', (question) => ui.setActiveQuestion(question, this));
+        socket.on('userListUpdated', ({ users, totalQuestions }) => ui.renderUserList(users, totalQuestions, this));
         socket.on('sessionEnded', ({ message }) => ui.handleSessionEnded(message));
         socket.on('themeChanged', ({ theme }) => ui.handleThemeChanged(theme));
-        socket.on('audienceCountUpdated', ({ count, joined }) => ui.updateAudienceCount(count, joined));
-        socket.on('updateResults', ({ questionId, results }) => ui.updateVoteCount(questionId, results));
 
         socket.on('connect', () => {
             console.log('✅ Conectado ao servidor. Autenticando controller...');
@@ -804,18 +752,6 @@ const socketHandler = {
             ui.handleJoinResponse(response);
         });
     },
-    createQuestion: (questionData) => {
-        const sessionCode = new URLSearchParams(window.location.search).get('session');
-        socket.emit('createQuestion', { sessionCode, question: questionData });
-    },
-    startQuestion: (questionId) => {
-        const sessionCode = new URLSearchParams(window.location.search).get('session');
-        socket.emit('startQuestion', { sessionCode, questionId });
-    },
-    stopVoting: (questionId) => {
-        const sessionCode = new URLSearchParams(window.location.search).get('session');
-        socket.emit('stopQuestion', { sessionCode, questionId });
-    },
     endSession: () => {
         const sessionCode = new URLSearchParams(window.location.search).get('session');
         socket.emit('endSession', { sessionCode });
@@ -832,10 +768,6 @@ const socketHandler = {
         const sessionCode = new URLSearchParams(window.location.search).get('session');
         socket.emit('reorderQuestions', { sessionCode, newQuestionOrder: newOrder });
     },
-    showResults: (questionId) => {
-        const sessionCode = new URLSearchParams(window.location.search).get('session');
-        socket.emit('showResults', { sessionCode, questionId });
-    },
     createQuestion: (questionData, callback) => {
         const sessionCode = new URLSearchParams(window.location.search).get('session');
         socket.emit('createQuestion', { sessionCode, question: questionData }, callback);
@@ -847,6 +779,18 @@ const socketHandler = {
     toggleAudienceUrl: (visible) => {
         const sessionCode = new URLSearchParams(window.location.search).get('session');
         socket.emit('toggleAudienceUrl', { sessionCode, visible });
+    },
+    approveUser: (userId) => {
+        const sessionCode = new URLSearchParams(window.location.search).get('session');
+        socket.emit('approveUser', { sessionCode, userIdToApprove: userId });
+    },
+    rejectUser: (userId) => {
+        const sessionCode = new URLSearchParams(window.location.search).get('session');
+        socket.emit('rejectUser', { sessionCode, userIdToReject: userId });
+    },
+    removeUser: (userId) => {
+        const sessionCode = new URLSearchParams(window.location.search).get('session');
+        socket.emit('removeUser', { sessionCode, userIdToRemove: userId });
     },
 };
 
