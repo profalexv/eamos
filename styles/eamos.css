@@ -104,6 +104,18 @@ input.invalid { border-color: var(--danger-color); box-shadow: 0 0 0 2px color-m
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+.project-identifier {
+    position: fixed;
+    bottom: 10px;
+    right: 15px;
+    font-size: 1rem;
+    font-weight: bold;
+    color: var(--text-color);
+    opacity: 0.3;
+    pointer-events: none; /* So it doesn't interfere with clicks */
+    z-index: 9999;
+}
+
 /* ==========================================================================
    ESTILOS DE PÁGINA
    ========================================================================== */
