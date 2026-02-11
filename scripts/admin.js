@@ -1,11 +1,11 @@
 // ===== CONFIGURAÇÃO DE SOCKET.IO =====
-// Detecta ambiente (local ou produção)
-const getBackendUrl = () => {
-    const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    return isDevelopment ? 'http://localhost:3000' : 'https://profalexv-alexluza.onrender.com';
-};
+const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-const socket = io(getBackendUrl(), {
+// Em produção, `io()` sem URL conecta ao mesmo host da página.
+// Um proxy reverso no Render.com deve ser configurado para rotear
+// as requisições de /socket.io/ para o serviço de backend unificado.
+// Isso elimina URLs fixas no código e simplifica a configuração de CORS.
+const socket = io(isDevelopment ? 'http://localhost:3000' : undefined, {
     transports: ['websocket', 'polling'],
     withCredentials: true,
     reconnection: true,
