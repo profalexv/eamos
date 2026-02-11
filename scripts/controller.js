@@ -823,20 +823,22 @@ const ui = {
             return;
         }
 
+        if (!confirm("Atenção: O arquivo salvo incluirá as senhas de controller e presenter em texto claro, se disponíveis. Deseja continuar?")) {
+            return;
+        }
+
         const questionsToSave = validQuestions
             .filter(q => q !== null)
-            .map(({ text, imageUrl, questionType, options, charLimit, timer, results, isConcluded, ...rest }) => ({
-                text,
-                imageUrl: imageUrl || undefined,
-                questionType,
-                options: (questionType === 'options' && options) ? options.map(opt => opt.text) : undefined,
-                charLimit: charLimit || undefined,
-                timer: timer || undefined,
-                // Omitindo explicitamente 'results' e 'isConcluded' do arquivo salvo
+            // Salva a pergunta inteira, exceto por dados de estado que não devem ser persistidos
+            .map(({ id, createdAt, ...rest }) => ({
+                ...rest
             }));
 
         const sessionSettings = {
             theme: this.elements.sessionThemeSwitcher.value,
+            // Inclui as senhas para facilitar a recriação da sessão
+            controllerPassword: sessionStorage.getItem('eamos_session_pass') || '',
+            presenterPassword: sessionStorage.getItem('eamos_presenter_pass') || ''
         };
 
         const exportData = {

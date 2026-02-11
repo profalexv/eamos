@@ -8,6 +8,9 @@
     <link rel="stylesheet" href="../styles/eamos.css">
 </head>
 <body class="admin-page centered-layout">
+    <div id="connection-status-banner" class="connection-status-banner">
+        <span class="spinner"></span> <span id="connection-status-text">Conectando ao servidor...</span>
+    </div>
     <div class="container">
         <h1>EAMOS - <span id="page-title"></span></h1>
         <p id="error-message" style="display: none;"></p>
@@ -29,6 +32,10 @@
                 <button class="back-to-menu-btn back-button">← Voltar</button>
             </div>
             <h2>Criar Nova Sessão</h2>
+            <div style="margin-bottom: 1rem;">
+                <button id="load-session-from-file-btn" class="secondary-button" style="width: 100%;">Carregar de Arquivo (.json)</button>
+                <input type="file" id="load-session-input" accept=".json" style="display: none;">
+            </div>
             <label for="session-deadline">Horário Final da Sessão (Opcional)</label>
             <input type="time" id="session-deadline">
             <input type="password" id="new-controller-pass" placeholder="Crie uma senha para o Controller">

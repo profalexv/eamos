@@ -104,6 +104,27 @@ input.invalid { border-color: var(--danger-color); box-shadow: 0 0 0 2px color-m
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+.connection-status-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 10px;
+    background-color: var(--secondary-color);
+    color: var(--button-text-color);
+    text-align: center;
+    font-weight: bold;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: transform 0.3s ease-in-out;
+    transform: translateY(-100%); /* Começa escondido */
+}
+.connection-status-banner.visible { transform: translateY(0); }
+.connection-status-banner.error { background-color: var(--danger-color); }
+
 .project-identifier {
     position: fixed;
     bottom: 10px;

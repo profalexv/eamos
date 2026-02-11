@@ -14,10 +14,13 @@ const socket = io(socketUrl, {
 
 const params = new URLSearchParams(window.location.search);
 const role = params.get('role');
+let questionsToImport = []; // Armazena perguntas carregadas de um arquivo
 
 // ===== SELEÇÃO DE ELEMENTOS DO DOM =====
 const pageTitle = document.getElementById('page-title');
 const errorMsg = document.getElementById('error-message');
+const connectionStatusBanner = document.getElementById('connection-status-banner');
+const connectionStatusText = document.getElementById('connection-status-text');
 
 // Seções
 const actionButtonsDiv = document.getElementById('action-buttons');
@@ -30,6 +33,8 @@ const joinSessionMainBtn = document.getElementById('join-session-main-btn');
 const backToIndexBtn = document.getElementById('back-to-index-btn');
 
 // Formulário de Nova Sessão
+const loadFromFileBtn = document.getElementById('load-session-from-file-btn');
+const loadSessionInput = document.getElementById('load-session-input');
 const createSessionBtn = document.getElementById('create-session-btn');
 const newControllerPassInput = document.getElementById('new-controller-pass');
 const newPresenterPassInput = document.getElementById('new-presenter-pass');
@@ -58,6 +63,31 @@ function showError(message) {
     errorMsg.style.display = 'block';
 }
 
+function setConnectionStatus(status, message) {
+    if (!connectionStatusBanner || !connectionStatusText) return;
+
+    const buttonsToDisable = [createSessionMainBtn, joinSessionMainBtn];
+
+    switch (status) {
+        case 'connecting':
+            connectionStatusBanner.classList.remove('error');
+            connectionStatusBanner.classList.add('visible');
+            connectionStatusText.innerText = message || 'Conectando ao servidor...';
+            buttonsToDisable.forEach(btn => btn && (btn.disabled = true));
+            break;
+        case 'connected':
+            connectionStatusBanner.classList.remove('visible');
+            buttonsToDisable.forEach(btn => btn && (btn.disabled = false));
+            break;
+        case 'error':
+            connectionStatusBanner.classList.add('error');
+            connectionStatusBanner.classList.add('visible');
+            connectionStatusText.innerText = message || 'Falha na conexão.';
+            buttonsToDisable.forEach(btn => btn && (btn.disabled = true));
+            break;
+    }
+}
+
 function showMainMenu() {
     actionButtonsDiv.classList.add('active');
     newSessionForm.classList.remove('active');
@@ -69,7 +99,8 @@ function showMainMenu() {
     deadlineInput.value = '';
     if (sessionThemeInput) sessionThemeInput.value = 'light';
     joinSessionCodeInput.value = '';
-    joinSessionPassInput.value = '';    
+    joinSessionPassInput.value = '';
+    questionsToImport = []; // Limpa perguntas importadas
 }
 
 // ===== VALIDAÇÃO E CONFIGURAÇÃO INICIAL DA UI =====
@@ -146,6 +177,48 @@ noPresenterPassCheckbox?.addEventListener('change', () => {
     handlePresenterPassCheckboxes();
 });
 
+loadFromFileBtn?.addEventListener('click', () => {
+    loadSessionInput.click();
+});
+
+loadSessionInput?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const data = JSON.parse(event.target.result);
+            // Suporta o novo formato {sessionSettings, questions} e o formato antigo [questions]
+            const loadedQuestions = data.questions || data;
+
+            if (Array.isArray(loadedQuestions)) {
+                questionsToImport = loadedQuestions;
+                alert(`${questionsToImport.length} pergunta(s) carregada(s) e prontas para serem incluídas na nova sessão.`);
+            } else {
+                questionsToImport = [];
+                throw new Error('O arquivo não contém um array de perguntas válido.');
+            }
+
+            // Opcional: carregar configurações da sessão
+            if (data.sessionSettings && data.sessionSettings.theme && sessionThemeInput) {
+                sessionThemeInput.value = data.sessionSettings.theme;
+            }
+
+        } catch (error) {
+            showError('Erro ao processar o arquivo: ' + error.message);
+            questionsToImport = [];
+        } finally {
+            // Limpa o input para permitir carregar o mesmo arquivo novamente
+            loadSessionInput.value = '';
+        }
+    };
+    reader.onerror = () => {
+        showError('Não foi possível ler o arquivo.');
+        loadSessionInput.value = '';
+    };
+    reader.readAsText(file);
+});
 
 // Botões de "Voltar" dentro dos formulários
 backToMenuBtns.forEach(btn => {
@@ -192,13 +265,14 @@ createSessionBtn?.addEventListener('click', () => {
     createSessionBtn.disabled = true;
     createSessionBtn.innerText = 'Criando...';
 
-    const payload = { controllerPassword, presenterPassword, deadline, theme, repeatControllerPass, noPresenterPass };
+    const payload = { controllerPassword, presenterPassword, deadline, theme, repeatControllerPass, noPresenterPass, questions: questionsToImport };
 
     socket.emit('createSession', payload, (response) => {
         createSessionBtn.disabled = false;
         createSessionBtn.innerText = 'Criar e Entrar';
         
         if (response.success) {
+            questionsToImport = []; // Limpa após o uso
             sessionStorage.setItem('eamos_session_code', response.sessionCode);
             sessionStorage.setItem('eamos_session_pass', controllerPassword);
 
@@ -252,16 +326,25 @@ joinSessionBtn?.addEventListener('click', () => {
 socket.on('connect', () => {
     console.log('✅ Conectado ao servidor');
     clearError();
+    setConnectionStatus('connected');
 });
 
 socket.on('connect_error', (error) => {
     console.error('❌ Erro de conexão:', error);
     showError('Não foi possível conectar ao servidor. Verifique a internet e tente novamente.');
+    setConnectionStatus('error', 'Falha na conexão. Tentando reconectar...');
 });
 
 socket.on('disconnect', (reason) => {
     console.warn('⚠️  Desconectado do servidor:', reason);
+    // Só mostra o banner se não for uma desconexão manual (ex: navegação)
+    if (reason !== 'io client disconnect') {
+        setConnectionStatus('connecting', 'Conexão perdida. Reconectando...');
+    }
 });
 
 // Inicializa o estado dos checkboxes ao carregar a página
 document.addEventListener('DOMContentLoaded', handlePresenterPassCheckboxes);
+
+// Inicia a UI no estado de "conectando"
+setConnectionStatus('connecting');
