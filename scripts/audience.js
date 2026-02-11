@@ -1,10 +1,8 @@
 const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-// Em produção, `io()` sem URL conecta ao mesmo host da página.
-// Um proxy reverso no Render.com deve ser configurado para rotear
-// as requisições de /socket.io/ para o serviço de backend unificado.
-// Isso elimina URLs fixas no código e simplifica a configuração de CORS.
-const socket = io(isDevelopment ? 'http://localhost:3000' : undefined, {
+// Conecta diretamente ao backend, usando o namespace '/eamos'
+const socketUrl = isDevelopment ? 'http://localhost:3000/eamos' : 'https://profalexv-alexluza.onrender.com/eamos';
+const socket = io(socketUrl, {
     transports: ['websocket', 'polling'],
     withCredentials: true,
     reconnection: true,
