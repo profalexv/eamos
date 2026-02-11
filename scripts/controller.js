@@ -195,7 +195,7 @@ const ui = {
                 this.elements.openPresenterBtn.addEventListener('click', () => {
                     // Usa localStorage para passar a senha para a nova aba de forma segura
                     localStorage.setItem('eamos_temp_pass', presenterPassword);
-                    window.open(`/pages/presenter.html?session=${sessionCode}`, '_blank');
+                    window.open(`presenter.html?session=${sessionCode}`, '_blank');
                 });
             } else {
                 this.elements.openPresenterBtn.disabled = true;
@@ -1052,12 +1052,12 @@ const ui = {
         document.body.removeChild(link);
     },
 
-    handleSessionEnded: (message) => { alert(message); window.location.href = '/'; },
+    handleSessionEnded: (message) => { alert(message); window.location.href = '../index.html'; },
 
     handleJoinResponse(response) {
         if (!response.success) {
             alert(response.message);
-            window.location.href = `/pages/admin.html?role=controller`;
+            window.location.href = `admin.html?role=controller`;
             return;
         }
         if (response.users) {
@@ -1166,7 +1166,7 @@ const socketHandler = {
         const sessionPassword = sessionStorage.getItem('eamos_session_pass');
         if (!sessionPassword) {
             alert('Erro de autenticação. Por favor, volte e entre na sessão novamente.');
-            window.location.href = `/pages/admin.html?role=controller`;
+            window.location.href = `admin.html?role=controller`;
             return;
         }
         socket.emit('joinAdminSession', { sessionCode, password: sessionPassword, role: 'controller' }, (response) => {

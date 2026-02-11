@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', function () {
         audienceJoinBtn.addEventListener('click', () => {
             const sessionCode = audienceSessionCodeInput.value.trim().toUpperCase();
             if (sessionCode) {
-                window.location.href = `/pages/audience.html?session=${sessionCode}`;
+                window.location.href = `pages/audience.html?session=${sessionCode}`;
             } else {
                 alert('Por favor, insira o código da sessão.');
                 audienceSessionCodeInput.focus();
@@ -18,13 +18,13 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (controllerLoginBtn) {
         controllerLoginBtn.addEventListener('click', () => {
-            window.location.href = '/pages/admin.html';
+            window.location.href = 'pages/admin.html';
         });
     }
 
     if (presenterLoginBtn) {
         presenterLoginBtn.addEventListener('click', () => {
-            window.location.href = '/pages/admin.html?role=presenter';
+            window.location.href = 'pages/admin.html?role=presenter';
         });
     }
 });

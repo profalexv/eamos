@@ -90,7 +90,7 @@ if (!role || role === 'controller') {
         presenterBackBtn.addEventListener('click', (e) => {
             e.preventDefault(); // Prevenir que o outro listener de 'back-to-menu' seja acionado
             e.stopPropagation();
-            window.location.href = '/index.html';
+            window.location.href = '../index.html';
         });
     }
 } else {
@@ -119,7 +119,7 @@ joinSessionMainBtn?.addEventListener('click', () => {
 });
 
 backToIndexBtn.addEventListener('click', () => {
-    window.location.href = '/index.html';
+    window.location.href = '../index.html';
 });
 
 // Lógica para os checkboxes de senha do apresentador
@@ -213,7 +213,7 @@ createSessionBtn?.addEventListener('click', () => {
             }
             sessionStorage.setItem('eamos_presenter_pass', presenterPassForStorage);
 
-            window.location.href = `/pages/controller.html?session=${response.sessionCode}`;
+            window.location.href = `controller.html?session=${response.sessionCode}`;
         } else {
             showError(response.message || 'Ocorreu um erro ao criar a sessão.');
         }
@@ -242,7 +242,7 @@ joinSessionBtn?.addEventListener('click', () => {
     sessionStorage.setItem('eamos_session_code', sessionCode);
     sessionStorage.setItem('eamos_session_pass', password);
     const targetPage = roleToJoin === 'controller' ? 'controller' : roleToJoin;
-    window.location.href = `/pages/${targetPage}.html?session=${sessionCode}`;
+    window.location.href = `${targetPage}.html?session=${sessionCode}`;
 });
 
 // ===== EVENTOS DE CONEXÃO =====

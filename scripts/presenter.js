@@ -93,7 +93,7 @@ function joinPresenterSession() {
     if (!sessionPassword) {
         console.error('Falha na autenticação: senha não encontrada no sessionStorage ou localStorage.');
         alert('Erro de autenticação. A sessão pode ter expirado ou a senha não foi fornecida. Por favor, tente entrar novamente.');
-        window.location.href = `/pages/admin.html?role=presenter`;
+        window.location.href = `admin.html?role=presenter`;
         return;
     }
     socket.emit('joinAdminSession', { sessionCode, password: sessionPassword, role: 'presenter' }, (response) => {        
@@ -101,7 +101,7 @@ function joinPresenterSession() {
 
         if (!response.success) {
             alert(response.message);
-            window.location.href = `/pages/admin.html?role=presenter`;
+            window.location.href = `admin.html?role=presenter`;
             return;
         }
 
@@ -314,7 +314,7 @@ socket.on('audienceUrlVisibilityChanged', ({ visible }) => {
 socket.on('error', (message) => alert(message));
 socket.on('sessionEnded', (message) => {
     alert(message);
-    window.location.href = '/';
+    window.location.href = '../index.html';
 });
 
 socket.on('connect_error', (error) => {
