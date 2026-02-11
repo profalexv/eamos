@@ -29,26 +29,22 @@ function applyTheme(theme = 'light') {
     body.classList.add(`theme-${theme}`);
 }
 
-function getSessionPassword() {
-    // 1. Tenta obter a senha do sessionStorage da aba atual.
-    let password = sessionStorage.getItem('eamos_session_pass');
-    if (password) console.log('INFO: Senha encontrada no sessionStorage da aba.');
-
-    // 2. Se não encontrar, verifica se foi passada uma senha temporária de outra aba via localStorage.
-    if (!password) {
-        const tempPass = localStorage.getItem('eamos_temp_pass');
-        if (tempPass) {
-            console.log('INFO: Senha temporária encontrada no localStorage, movendo para sessionStorage.');
-            password = tempPass;
-            sessionStorage.setItem('eamos_session_pass', tempPass); // Move para o sessionStorage desta aba
-            // Não removemos o item do localStorage. Isso permite que a prévia no controller
-            // funcione de forma consistente mesmo após recarregar a página, embora
-            // deixe a senha do presenter no localStorage. É um trade-off para a funcionalidade.
-            // localStorage.removeItem('eamos_temp_pass');
-        }
+function getPresenterPassword() {
+    // 1. Verifica se uma senha temporária foi passada pela aba do Controller via localStorage.
+    const tempPass = localStorage.getItem('eamos_temp_pass');
+    if (tempPass) {
+        console.log('INFO: Senha temporária do controller encontrada, movendo para sessionStorage.');
+        sessionStorage.setItem('eamos_presenter_pass', tempPass);
+        // Não removemos o item do localStorage para permitir que a prévia no controller
+        // funcione de forma consistente mesmo após recarregar a página.
     }
 
-    if (!password) console.error('ERRO CRÍTICO: Nenhuma senha encontrada para autenticação do presenter.');
+    // 2. Retorna a senha do presenter do sessionStorage.
+    // Ela foi definida pelo passo 1 ou por um login direto na página de admin.
+    const password = sessionStorage.getItem('eamos_presenter_pass');
+    if (!password) {
+        console.error('ERRO CRÍTICO: Nenhuma senha de presenter encontrada para autenticação.');
+    }
     return password;
 }
 
@@ -86,7 +82,7 @@ if (qrcodeContainer) {
 
 function joinPresenterSession() {
     const sessionCode = new URLSearchParams(window.location.search).get('session');
-    const sessionPassword = getSessionPassword();
+    const sessionPassword = getPresenterPassword();
 
     if (!sessionPassword) {
         console.error('Falha na autenticação: senha não encontrada no sessionStorage ou localStorage.');

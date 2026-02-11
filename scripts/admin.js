@@ -236,9 +236,14 @@ joinSessionBtn?.addEventListener('click', () => {
     }
 
     const roleToJoin = role || 'controller';
-    // Armazena temporariamente a senha para a próxima página e redireciona
+    // Armazena a senha na chave correta para a role que está entrando
     sessionStorage.setItem('eamos_session_code', sessionCode);
-    sessionStorage.setItem('eamos_session_pass', password);
+    if (roleToJoin === 'presenter') {
+        sessionStorage.setItem('eamos_presenter_pass', password);
+    } else {
+        sessionStorage.setItem('eamos_session_pass', password);
+    }
+
     const targetPage = roleToJoin === 'controller' ? 'controller' : roleToJoin;
     window.location.href = `${targetPage}.html?session=${sessionCode}`;
 });
