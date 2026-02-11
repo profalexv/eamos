@@ -54,7 +54,14 @@
     </div>
 
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <script src="../../shared/scripts/cronometro.js"></script>
+    <script>
+        // Carrega dinamicamente o script compartilhado do backend
+        (function() {
+            const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const backendHost = isDevelopment ? 'http://localhost:3000' : ''; // Em produção, o caminho é relativo à raiz do domínio (via proxy)
+            document.write(`<script src="${backendHost}/shared/scripts/cronometro.js"><\/script>`);
+        })();
+    </script>
     <script src="../scripts/audience.js"></script>
 </body>
 </html>
