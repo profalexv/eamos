@@ -1,6 +1,6 @@
 const getBackendUrl = () => {
     const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    return isDevelopment ? 'http://localhost:3000' : 'https://eamos-backend.onrender.com';
+    return isDevelopment ? 'http://localhost:3000' : 'https://profalexv-alexluza.onrender.com';
 };
 
 const socket = io(getBackendUrl(), {
